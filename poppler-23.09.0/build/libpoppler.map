@@ -1,0 +1,4 @@
+POPPLER_131 {
+  global:
+    *;
+};
