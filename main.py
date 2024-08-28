@@ -9,12 +9,13 @@ from langchain_openai import OpenAIEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_core.runnables import RunnablePassthrough
+from langchain.chains.conversation.memory import ConversationBufferMemory
+from langchain.chains import ConversationChain
 
 # Load environment variables
 load_dotenv()
 
 llm = ChatOpenAI(model="gpt-4-turbo", temperature=0)
-
 
 DOCUMENT_PATH = "docs/Victoria_Productions_Guide.pdf"
 HASH_FILE = "document_hash.txt"
@@ -68,40 +69,43 @@ else:
 vectorstore = FAISS.load_local(VECTOR_STORE_PATH, OpenAIEmbeddings(), allow_dangerous_deserialization=True)
 retriever = vectorstore.as_retriever()
 
+# Initialize Conversation Buffer Memory
+conversation_memory = ConversationBufferMemory()
+
+# Initialize the Conversation Chain with memory
+conversation_chain = ConversationChain(
+    llm=llm,
+    memory=conversation_memory,
+)
 
 # Initialize FastAPI application
 app = FastAPI(
     title="LangChain Server with Knowledge Base",
     version="1.0",
-    description=
-    "A knowledge-based API server using LangChain and Victoria_Productions_Guide.pdf as a knowledge source",
+    description="A knowledge-based API server using LangChain and Victoria_Productions_Guide.pdf as a knowledge source",
 )
 
 # Define the persona/behavior prompt
 persona_prompt = (
-"""Context:    You are an multimedia assistant at Victoria Productions, a virtual assistant specialized in VFX and augmented reality . Your main role is to engage users in a friendly and professional manner about Victoria Productions, providing valuable information and guiding them through the process of considering multimedia services. Victoria Productions was founded by Victoria Han Farago in 2005. Here is another place/company where Victoria Han Farago could deploy an AI agent: She could also benefit from AI implementation into her other company Farago Design, is a company where she serves as Co-CEO and CFO.A great match to deploy AI technology is the company STEM.AI from Montreal, given their latest proof-of-work on the subject. STEM.AI offers solutions to apply and make artificial intelligence accessible, primarily in the fields of STEM. From customized AI assistants to data analysis workflow, development, fine-tuning and deployment is taken care of by our team of developers. STEM.AI is followed by executives such as CEO’s and CTO’s from Fortune 500 companies that aim to implement new technologies to their businesses.
+    """Context: You are a multimedia assistant at Victoria Productions, a virtual assistant specialized in VFX and augmented reality. Your main role is to engage users in a friendly and professional manner about Victoria Productions, providing valuable information and guiding them through the process of considering multimedia services through short answers. 
 
     General Instructions:
     - Building Trust: Focus on building trust and understanding of multimedia solutions.
 
     Specific Guidelines:
-
     - Reference to documents: Do not invent information, and refer to the resources document as a priority.
     - Accuracy: If you are unsure of information or do not have the answer, do not invent it; instead, tell the user to contact one of our experts who can answer all their questions. 
 
     Your Expertise:
-
-    As a customer relationship expert, you have significant experience in managing interactions with clients and converting prospects into satisfied customers. Your goal is to understand the user's needs, answer their questions.
+    As a customer relationship expert, you have significant experience in managing interactions with clients and converting prospects into satisfied customers. Your goal is to understand the user's needs, and answer their questions.
     """
 )
-
 
 @app.get("/")
 async def read_root():
     return {
         "message": "Welcome to the LangChain Server with a knowledge base!"
     }
-
 
 @app.post("/chat")
 async def chat(request: Request):
@@ -124,17 +128,15 @@ async def chat(request: Request):
         # Combine the persona prompt, context, and user query
         question_with_context = f"{persona_prompt}\n\nContext:\n{context_text}\n\nQuestion: {input_text}"
 
-        # Get the response from the LLM
-        result = llm.invoke(question_with_context)
-        print(f"LLM response: {result.content}")
+        # Get the response from the LLM using the conversation chain
+        result = conversation_chain.run(question_with_context)
+        print(f"LLM response: {result}")
 
-        # Return the LLM's response to Voiceflow
-        return {"answer": result.content}
+        # Return the LLM's response
+        return {"answer": result}
     except Exception as e:
         print(f"Error during chat invocation: {e}")
         return {"error": str(e)}
-
-
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
