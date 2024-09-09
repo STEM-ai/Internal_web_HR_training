@@ -61,7 +61,6 @@ def ingest_docs():
 # Check if document has changed and ingest if needed
 if document_changed():
     print("Document changed. Ingesting new document...")
-    conversation_memory = ConversationBufferMemory()
     conversation_memory.clear()
     ingest_docs()
 else:
