@@ -18,4 +18,10 @@
     pkgs.boost
     pkgs.gpgme
   ];
+
+
+  shellHook = ''
+      pip install -r requirements.txt --constraint constraints.txt
+    '';
+  
 }

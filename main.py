@@ -11,6 +11,12 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.runnables import RunnablePassthrough
 from langchain.chains.conversation.memory import ConversationBufferMemory
 from langchain.chains import ConversationChain
+import asyncio
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -104,6 +110,25 @@ async def read_root():
     return {
         "message": "Welcome to the LangChain Server with a knowledge base!"
     }
+
+# Function to reset conversation memory
+def reset_conversation_memory():
+    global conversation_memory
+    conversation_memory.clear()
+    logger.info("Conversation memory has been cleared.")
+
+# Background task to reset conversation memory every 20 minutes
+async def periodic_memory_reset():
+    while True:
+        await asyncio.sleep(20 * 60)  # Wait for 20 minutes
+        reset_conversation_memory()
+
+@app.on_event("startup")
+async def startup_event():
+    # Start the background task when the FastAPI app starts
+    asyncio.create_task(periodic_memory_reset())
+    logger.info("Started background task to reset conversation memory every 20 minutes.")
+
 
 @app.post("/chat")
 async def chat(request: Request):
