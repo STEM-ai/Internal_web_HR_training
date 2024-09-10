@@ -26,6 +26,12 @@ DOCUMENT_PATH = "docs/Template_pitch.pdf"
 HASH_FILE = "document_hash.txt"
 VECTOR_STORE_PATH = "faiss_vector_db"
 
+# Initialize Conversation Buffer Memory
+conversation_memory = ConversationBufferMemory()
+
+# Define retriever as a global variable
+retriever = None
+
 # Function to calculate the hash of the document
 def calculate_file_hash(filepath):
     hash_algo = hashlib.sha256()
@@ -53,30 +59,43 @@ def document_changed():
 
 # Function to load and ingest documents
 def ingest_docs():
+    # Load the document
     loader = UnstructuredPDFLoader(DOCUMENT_PATH)
     docs = loader.load()
+
+    # Split the documents into chunks
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     chunks = text_splitter.split_documents(docs)
 
+    # Initialize OpenAI Embeddings
+    embeddings = OpenAIEmbeddings()
+
+    # Check if chunks are created correctly
+    if not chunks:
+        raise ValueError("No chunks created from the document. Check the document loading process.")
+
     # Create or overwrite the vector store
-    vectorstore = FAISS.from_documents(documents=chunks, embedding=OpenAIEmbeddings())
+    vectorstore = FAISS.from_documents(documents=chunks, embedding=embeddings)
     vectorstore.save_local(VECTOR_STORE_PATH)
+
     print("Document successfully ingested into knowledge base")
+
+    return vectorstore  # Return the vectorstore to update retriever globally
+
 
 # Check if document has changed and ingest if needed
 if document_changed():
     print("Document changed. Ingesting new document...")
     conversation_memory.clear()
-    ingest_docs()
+    conversation_memory = ConversationBufferMemory()
+    print("Conversation memory cleared")
+    # Ingest the new documents and update the retriever
+    vectorstore = ingest_docs()
+    retriever = vectorstore.as_retriever()  # Update the global retriever after ingestion
 else:
     print("Document unchanged. Loading existing vector store.")
-
-# Load the vector store
-vectorstore = FAISS.load_local(VECTOR_STORE_PATH, OpenAIEmbeddings(), allow_dangerous_deserialization=True)
-retriever = vectorstore.as_retriever()
-
-# Initialize Conversation Buffer Memory
-conversation_memory = ConversationBufferMemory()
+    vectorstore = FAISS.load_local(VECTOR_STORE_PATH, OpenAIEmbeddings(), allow_dangerous_deserialization=True)
+    retriever = vectorstore.as_retriever()  # Set retriever during initialization
 
 # Initialize the Conversation Chain with memory
 conversation_chain = ConversationChain(
@@ -88,21 +107,25 @@ conversation_chain = ConversationChain(
 app = FastAPI(
     title="LangChain Server with Knowledge Base",
     version="1.0",
-    description="A knowledge-based API server using LangChain and Victoria_Productions_Guide.pdf as a knowledge source",
+    description="A knowledge-based API server using LangChain and  a knowledge source",
 )
 
 # Define the persona/behavior prompt
-persona_prompt = ("""Context: You are a virtual assistant at Vocality, a company specializing in developing AI-driven communication tools for individuals with speech or language disorders. Answer in the same language that the user uses. Your main role is to engage users in a friendly and professional manner, providing valuable information about Vocality’s solutions and guiding them through understanding how the app can meet their specific needs, by answering with short and concise answers.
-    General Instructions:
-    - Building Trust: Focus on building trust by explaining Vocality’s expertise in AI-powered communication tools and their mission to enhance communication for those with disabilities.
-    - Compassion and Clarity: Be empathetic, as the users or their loved ones may be dealing with communication challenges. Your answers should be clear, concise, and supportive.
-    Specific Guidelines:
-    - Reference to Documents: Do not invent information; refer to Vocality’s app features, technology, or research when answering questions.
-    - Accuracy: If unsure of information or lacking details, encourage the user to contact Vocality’s expert team for more precise assistance.
-    Your Expertise:
-    As a customer support expert, you have experience managing interactions with clients facing communication difficulties. Your goal is to understand the user's specific challenges, highlight how Vocality’s AI solutions can help, and ensure they feel supported and informed throughout their experience.
-    """)
+persona_prompt = ("""
+Context: You are a virtual assistant at Emerge Haus, a company specializing in developing bespoke AI solutions that accelerate business workflows. You interact with website visitors to provide information about Emerge Haus' services and AI capabilities, including generative AI, web development, and AI product consulting. Your main role is to engage users in a professional, informative, and helpful manner, guiding them through understanding how Emerge Haus' offerings can meet their needs.
 
+General Instructions:
+- Expertise and Trust: Focus on building trust by showcasing Emerge Haus' expertise in AI, including their success in deploying AI-driven solutions and assisting clients with advanced tech like large language models (LLMs) and Retrieval Augmented Generation (RAG).
+- Professionalism and Insight: Be professional and insightful, offering clear, concise, and value-driven responses. Showcase Emerge Haus' success stories to build credibility.
+- Personalized Assistance: Tailor responses to the user's needs, whether they're looking for AI product design, consulting, or development services. Guide users to relevant case studies or offer to schedule a consultation.
+
+Specific Guidelines:
+- Reference to Case Studies: Refer to Emerge Haus’ case studies when relevant to highlight the company's real-world experience in delivering AI solutions, such as for Local Falcon and CareSet.
+- Accuracy and Transparency: If you lack certain details or the question requires deeper expertise, direct users to Emerge Haus' team for more personalized assistance or suggest booking a consultation.
+
+Your Expertise:
+As an AI support assistant for Emerge Haus, you are well-versed in explaining AI product strategies, consulting services, and custom development solutions. You provide thoughtful, strategic guidance to help users understand how Emerge Haus can accelerate their business operations using cutting-edge AI technologies.
+""")
 
 @app.get("/")
 async def read_root():

@@ -26,6 +26,7 @@ unstructured = {extras = ["pdf"], version = "^0.15.1"}
 langchain-community = "^0.2.12"
 langchain-core = "^0.2.33"
 langchain-openai = "^0.1.22"
+torch = "^2.4.1"
 
 
 [build-system]

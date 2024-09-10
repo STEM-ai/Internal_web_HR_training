@@ -1,3 +1,5 @@
+
+pdf2image
 antlr4-python3-runtime==4.9.3
 anyio==4.4.0
 asgiref==3.8.1

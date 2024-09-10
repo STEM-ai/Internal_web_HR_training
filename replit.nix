@@ -1,9 +1,9 @@
 {pkgs}: {
   deps = [
+    pkgs.tesseract
+    pkgs.poppler_utils
     pkgs.cmake
     pkgs.wget
-    pkgs.libxcrypt
-    pkgs.
     pkgs.libxcrypt
     pkgs.bash
     pkgs.rustc
