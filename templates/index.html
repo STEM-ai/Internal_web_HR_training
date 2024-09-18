@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Agent Chatbot</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>AI Agent System by STEM.AI</h1>
+
+    <!-- Chatbox -->
+    <div id="chat-box">
+        <!-- Messages will be appended here -->
+    </div>
+
+    <!-- Chat input form -->
+    <form id="chat-form">
+        <input type="text" id="user-input" placeholder="Type your message" required>
+        <button type="submit">Send</button>
+    </form>
+
+    <!-- File upload form -->
+    <h2>Upload a PDF</h2>
+    <form id="upload-form" enctype="multipart/form-data">
+        <input type="file" id="file-upload" accept=".pdf" required>
+        <button type="submit">Upload</button>
+    </form>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
