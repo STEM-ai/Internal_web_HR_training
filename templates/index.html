@@ -3,30 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Agent Chatbot</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <title>Login Page</title>
 </head>
 <body>
-    <h1>AI Agent System by STEM.AI</h1>
-
-    <!-- Chatbox -->
-    <div id="chat-box">
-        <!-- Messages will be appended here -->
-    </div>
-
-    <!-- Chat input form -->
-    <form id="chat-form">
-        <input type="text" id="user-input" placeholder="Type your message" required>
-        <button type="submit">Send</button>
+    <h1>Login to Access Chat and Upload</h1>
+    <form id="login-form" method="POST" action="/login">
+        <label for="password">Password:</label>
+        <input type="password" id="password" name="password" required>
+        <button type="submit">Login</button>
     </form>
 
-    <!-- File upload form -->
-    <h2>Upload a PDF</h2>
-    <form id="upload-form" enctype="multipart/form-data">
-        <input type="file" id="file-upload" accept=".pdf" required>
-        <button type="submit">Upload</button>
-    </form>
-
-    <script src="/static/app.js"></script>
+    <script>
+        document.getElementById('login-form').addEventListener('submit', function (event) {
+            const password = document.getElementById('password').value;
+            console.log("Password entered:", password);  // Log password to console (for debugging)
+        });
+    </script>
 </body>
 </html>

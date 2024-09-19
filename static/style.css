@@ -1,25 +1,122 @@
+/* Global body styling */
 body {
   font-family: Arial, sans-serif;
-  text-align: center;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
+/* Centering and styling the chat container */
+.chat-container {
+  background-color: #fff;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+  max-width: 600px;
+  width: 100%;
+  height: 80vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+}
+
+/* Chat box where messages will be displayed */
 #chat-box {
   border: 1px solid #ccc;
   padding: 10px;
-  width: 80%;
-  height: 300px;
+  width: 100%;
+  height: 70%;
   overflow-y: auto;
-  margin: 20px auto;
   background-color: #f9f9f9;
+  border-radius: 5px;
+  margin-bottom: 20px;
 }
 
+/* User message styling */
 .user-message {
   text-align: right;
-  color: blue;
+  color: white;
+  background-color: blue;
+  padding: 10px;
+  margin: 5px 0;
+  border-radius: 10px;
+  max-width: 80%;
+  margin-left: auto;
 }
 
-.bot-message {
+/* AI message styling */
+.ai-message {
   text-align: left;
-  color: green;
+  color: white;
+  background-color: green;
+  padding: 10px;
+  margin: 5px 0;
+  border-radius: 10px;
+  max-width: 80%;
 }
-  
+
+/* Form styling at the bottom of the chat container */
+form {
+  display: flex;
+  justify-content: space-between;
+}
+
+input[type="text"] {
+  width: 80%;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+button {
+  padding: 10px 15px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+button:hover {
+  background-color: #0056b3;
+}
+
+/* Scrollable chat box */
+#chat-box {
+  overflow-y: scroll;
+  height: 70%;
+  padding-right: 10px;
+  border-radius: 5px;
+  background-color: #f7f7f7;
+  border: 1px solid #ddd;
+}
+
+/* User and AI message distinctions */
+.user-message {
+  background-color: #4a90e2;
+  color: white;
+  text-align: right;
+  border-radius: 10px;
+  margin: 5px 0;
+  padding: 10px;
+  width: fit-content;
+  max-width: 70%;
+  align-self: flex-end;
+}
+
+.ai-message {
+  background-color: #3cb371;
+  color: white;
+  text-align: left;
+  border-radius: 10px;
+  margin: 5px 0;
+  padding: 10px;
+  width: fit-content;
+  max-width: 70%;
+  align-self: flex-start;
+}

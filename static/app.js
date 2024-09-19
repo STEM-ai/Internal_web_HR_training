@@ -1,46 +1,53 @@
-document.addEventListener("DOMContentLoaded", () => {
-    const chatForm = document.getElementById("chat-form");
-    const chatBox = document.getElementById("chat-box");
+document.getElementById('chat-form').addEventListener('submit', async function (event) {
+    event.preventDefault();
+    const chatInput = document.getElementById('chat_input').value;
 
-    // Generate a unique session ID for each user session
-    let sessionId = localStorage.getItem("session_id");
+    // Extract session_id from cookies
+    const sessionId = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('session_token='))
+        ?.split('=')[1]; 
+
     if (!sessionId) {
-        sessionId = generateSessionId();
-        localStorage.setItem("session_id", sessionId);
+        console.error("Session ID is missing!");
+        return;
     }
 
-    function generateSessionId() {
-        return 'session_' + Math.random().toString(36).substr(2, 9);
-    }
+    const chatBox = document.getElementById('chat-box');
 
-    // Handle chat form submission
-    chatForm.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const userInput = document.getElementById("user-input").value;
+    // Display user message
+    const userMessage = document.createElement('div');
+    userMessage.classList.add('user-message');
+    userMessage.textContent = chatInput;
+    chatBox.appendChild(userMessage);
 
-        // Display user message in chatbox
-        const userMessage = `<div class="user-message">${userInput}</div>`;
-        chatBox.innerHTML += userMessage;
+    const chatData = {
+        session_id: sessionId,
+        input_text: chatInput
+    };
 
-        // Clear the input field after submission
-        document.getElementById("user-input").value = "";
+    document.getElementById('chat_input').value = ""; // Clear input field
 
-        // Send the user input to the backend along with the session ID
+    try {
         const response = await fetch("/chat", {
             method: "POST",
             headers: {
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
             },
-            body: JSON.stringify({
-                session_id: sessionId,  // Correctly pass the session_id
-                input_text: userInput    // Correctly pass the input_text
-            })
+            body: JSON.stringify(chatData),
         });
 
         const result = await response.json();
 
-        // Display the bot's response in the chatbox
-        const botMessage = `<div class="bot-message">${result.answer}</div>`;
-        chatBox.innerHTML += botMessage;
-    });
+        // Display AI message
+        const aiMessage = document.createElement('div');
+        aiMessage.classList.add('ai-message');
+        aiMessage.textContent = result.answer || "Error: No response from AI";
+        chatBox.appendChild(aiMessage);
+
+        // Scroll to the bottom of the chat box
+        chatBox.scrollTop = chatBox.scrollHeight;
+    } catch (error) {
+        console.error("Error sending chat request:", error);
+    }
 });
