@@ -8,6 +8,7 @@
 </head>
 <body>
     <div class="chat-container">
+        <h1>Internal HR AI Agent</h1>
         <!-- Chatbox Section -->
         <div id="chat-box" class="chat-box">
             <!-- Chat messages will be displayed here -->
@@ -26,11 +27,14 @@
                 <input type="file" id="file" name="file" accept="application/pdf" required>
                 <button type="submit">Upload</button>
             </form>
-            <!-- Hidden checkbox that will be shown when the upload is successful -->
-            <label>
-                <input type="checkbox" id="upload-success" style="display: none;" disabled>
-                File uploaded successfully
-            </label>
+
+            <!-- Message and checkbox will remain hidden initially -->
+            <div id="upload-success-container" style="display: none;">
+                <label>
+                    <input type="checkbox" id="upload-success" disabled>
+                    File uploaded successfully
+                </label>
+            </div>
         </div>
     </div>
 
@@ -91,9 +95,11 @@
             const result = await response.json();
             if (response.ok) {
                 console.log("Upload successful:", result.message);
-                // Show the checkbox when upload is successful
-                document.getElementById('upload-success').style.display = 'inline-block';
-                document.getElementById('upload-success').checked = true;
+                
+                // Show the message and checkbox when upload is successful
+                const successContainer = document.getElementById('upload-success-container');
+                successContainer.style.display = 'block';  // Make the message visible
+                document.getElementById('upload-success').checked = true;  // Check the checkbox
             } else {
                 console.error("Upload failed:", result.error);
                 alert("File upload failed!");

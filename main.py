@@ -210,48 +210,8 @@ async def get_chat_page(request: Request):
     else:
         raise HTTPException(status_code=403, detail="Unauthorized")
 
-
-# Chat functionality restricted by session
-@app.post("/chat")
-async def chat(request: Request):
-    try:
-        # Log raw request body
-        body = await request.json()
-        logger.info(f"Raw request body: {body}")
-
-        # Validate and extract incoming data
-        input_data = ChatInput(**body)
-        session_id = input_data.session_id
-        input_text = input_data.input_text
-        logger.info(
-            f"Received user input for session {session_id}: {input_text}")
-    except Exception as e:
-        logger.error(f"Error parsing input data: {e}")
-        return {"error": "Invalid input data"}
-
-    # Get or create conversation memory for this session
-    memory = get_conversation_memory(session_id)
-
-    try:
-        # Retrieve relevant knowledge from the vectorstore
-        context = retriever.invoke(input_text)
-        context_text = "\n\n".join([doc.page_content for doc in context])
-        logger.info(
-            f"Context retrieved for session {session_id}: {context_text}")
-
-        # Build the question with context and memory
-        question_with_context = f"{persona_prompt}\n\nContext:\n{context_text}\n\nQuestion: {input_text}"
-
-        # Use the conversation chain for this session's memory
-        conversation_chain = ConversationChain(llm=llm, memory=memory)
-        result = conversation_chain.run(question_with_context)
-        logger.info(f"Generated response for session {session_id}: {result}")
-
-        return {"answer": result}
-    except Exception as e:
-        logger.error(
-            f"Error during chat invocation for session {session_id}: {e}")
-        return {"error": "Failed to process request"}
+# Global dictionary to store filenames for each session
+uploaded_files = {}
 
 @app.post("/upload")
 async def upload_pdf(request: Request, file: UploadFile = File(...)):
@@ -297,12 +257,69 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
         vectorstore.save_local(session_vectorstore_path)
         logger.info(f"Updated vectorstore for session {session_token} with the new document.")
 
+        # Store the uploaded filename for this session
+        uploaded_files[session_token] = file.filename
+
         return {"message": f"File '{file.filename}' uploaded and ingested successfully!"}
 
     except Exception as e:
         logger.error(f"Error during file upload and ingestion: {e}")
         return {"error": str(e)}
 
+# Chat functionality restricted by session
+@app.post("/chat")
+async def chat(request: Request):
+    try:
+        # Log raw request body
+        body = await request.json()
+        logger.info(f"Raw request body: {body}")
+
+        # Validate and extract incoming data
+        input_data = ChatInput(**body)
+        session_id = input_data.session_id
+        input_text = input_data.input_text
+        logger.info(f"Received user input for session {session_id}: {input_text}")
+    except Exception as e:
+        logger.error(f"Error parsing input data: {e}")
+        return {"error": "Invalid input data"}
+
+    # Get or create conversation memory for this session
+    memory = get_conversation_memory(session_id)
+
+    try:
+        # Retrieve relevant knowledge from the vectorstore
+        context = retriever.invoke(input_text)
+        context_text = "\n\n".join([doc.page_content for doc in context])
+        logger.info(f"Context retrieved for session {session_id}: {context_text}")
+
+        # Check if a PDF has been uploaded for this session
+        session_vectorstore_path = f"faiss_vectorstore_{session_id}"
+        if os.path.exists(session_vectorstore_path):
+            logger.info(f"Loading vector store from uploaded PDF for session {session_id}.")
+            # Load the session's vectorstore and retrieve the PDF content
+            vectorstore = FAISS.load_local(session_vectorstore_path, OpenAIEmbeddings(), allow_dangerous_deserialization=True)
+            pdf_context = vectorstore.similarity_search(input_text)
+            pdf_text = "\n\n".join([doc.page_content for doc in pdf_context])
+
+            # Append the filename to the context text
+            filename = uploaded_files.get(session_id, "Unknown file")
+            context_text += f"\n\nAdditional context from uploaded PDF (File: {filename}):\n{pdf_text}"
+        else:
+            logger.info(f"No uploaded PDF found for session {session_id}.")
+
+        # Build the question with context and memory
+        question_with_context = f"{persona_prompt}\n\nContext:\n{context_text}\n\nQuestion: {input_text}"
+
+        # Use the conversation chain for this session's memory
+        conversation_chain = ConversationChain(llm=llm, memory=memory)
+        result = conversation_chain.run(question_with_context)
+        logger.info(f"Generated response for session {session_id}: {result}")
+
+        return {"answer": result}
+    except Exception as e:
+        logger.error(f"Error during chat invocation for session {session_id}: {e}")
+        return {"error": "Failed to process request"}
+                
 # Start the background task when the FastAPI app starts
 @app.on_event("startup")
 async def startup_event():
