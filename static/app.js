@@ -1,21 +1,10 @@
+// Handle chat form submission
 document.getElementById('chat-form').addEventListener('submit', async function (event) {
     event.preventDefault();
     const chatInput = document.getElementById('chat_input').value;
-
-    // Extract session_id from cookies
-    const sessionId = document.cookie
-        .split('; ')
-        .find(row => row.startsWith('session_token='))
-        ?.split('=')[1]; 
-
-    if (!sessionId) {
-        console.error("Session ID is missing!");
-        return;
-    }
+    const sessionId = document.cookie.split('; ').find(row => row.startsWith('session_token=')).split('=')[1]; 
 
     const chatBox = document.getElementById('chat-box');
-
-    // Display user message
     const userMessage = document.createElement('div');
     userMessage.classList.add('user-message');
     userMessage.textContent = chatInput;
@@ -38,16 +27,35 @@ document.getElementById('chat-form').addEventListener('submit', async function (
         });
 
         const result = await response.json();
-
-        // Display AI message
         const aiMessage = document.createElement('div');
         aiMessage.classList.add('ai-message');
         aiMessage.textContent = result.answer || "Error: No response from AI";
         chatBox.appendChild(aiMessage);
 
-        // Scroll to the bottom of the chat box
         chatBox.scrollTop = chatBox.scrollHeight;
     } catch (error) {
         console.error("Error sending chat request:", error);
+    }
+});
+
+// Handle file upload form submission
+document.getElementById('upload-form').addEventListener('submit', async function (event) {
+    event.preventDefault();
+    const formData = new FormData();
+    const fileInput = document.getElementById('file');
+    formData.append('file', fileInput.files[0]);
+
+    try {
+        const response = await fetch('/upload', {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+        console.log("Upload result:", result);
+        alert(result.message || "File uploaded successfully!");
+    } catch (error) {
+        console.error("Error uploading file:", error);
+        alert("Error uploading file");
     }
 });

@@ -29,12 +29,12 @@ load_dotenv()
 
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
-DOCUMENT_PATH = "docs/Template_pitch.pdf"
+DOCUMENT_PATH = "docs/HR_internal.pdf"
 HASH_FILE = "document_hash.txt"
 VECTOR_STORE_PATH = "faiss_vector_db"
 
 # Password for security
-PASSWORD = "test" #PASSWORD = os.getenv('ACCESS_PASSWORD', 'securepassword') # = test
+PASSWORD = "test"  #PASSWORD = os.getenv('ACCESS_PASSWORD', 'securepassword') # = test
 
 # Store conversation memories and last active time keyed by session_id
 session_memories = {}
@@ -49,6 +49,7 @@ UPLOAD_DIRECTORY = "temp_files"
 if not os.path.exists(UPLOAD_DIRECTORY):
     os.makedirs(UPLOAD_DIRECTORY)
 
+
 # Function to calculate file hash
 def calculate_file_hash(filepath):
     logger.info(f"Calculating hash for file: {filepath}")
@@ -57,6 +58,7 @@ def calculate_file_hash(filepath):
         while chunk := file.read(8192):
             hash_algo.update(chunk)
     return hash_algo.hexdigest()
+
 
 # Function to check if the document has changed
 def document_changed():
@@ -73,6 +75,7 @@ def document_changed():
     logger.info("Document has changed.")
     return True
 
+
 # Function to load and ingest documents
 def ingest_docs():
     logger.info("Starting document ingestion process.")
@@ -80,15 +83,18 @@ def ingest_docs():
     docs = loader.load()
     logger.info(f"Loaded {len(docs)} documents.")
 
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000,
+                                                   chunk_overlap=200)
     chunks = text_splitter.split_documents(docs)
     logger.info(f"Split documents into {len(chunks)} chunks.")
 
     embeddings = OpenAIEmbeddings()
     vectorstore = FAISS.from_documents(documents=chunks, embedding=embeddings)
     vectorstore.save_local(VECTOR_STORE_PATH)
-    logger.info("Document successfully ingested and stored in the vector database.")
+    logger.info(
+        "Document successfully ingested and stored in the vector database.")
     return vectorstore
+
 
 # Load or initialize the document vector store
 if document_changed():
@@ -96,16 +102,21 @@ if document_changed():
     retriever = vectorstore.as_retriever()
 else:
     logger.info("Loading existing vector store.")
-    vectorstore = FAISS.load_local(VECTOR_STORE_PATH, OpenAIEmbeddings(), allow_dangerous_deserialization=True)
+    vectorstore = FAISS.load_local(VECTOR_STORE_PATH,
+                                   OpenAIEmbeddings(),
+                                   allow_dangerous_deserialization=True)
     retriever = vectorstore.as_retriever()
+
 
 # Function to get memory for a session, creating it if it doesn't exist
 def get_conversation_memory(session_id):
     if session_id not in session_memories:
-        logger.info(f"Creating new conversation memory for session: {session_id}")
+        logger.info(
+            f"Creating new conversation memory for session: {session_id}")
         session_memories[session_id] = ConversationBufferMemory()
     last_active_time[session_id] = time.time()  # Update last active time
     return session_memories[session_id]
+
 
 # Cleanup inactive sessions
 def cleanup_sessions(timeout=3600):  # Timeout in seconds (1 hour)
@@ -118,7 +129,9 @@ def cleanup_sessions(timeout=3600):  # Timeout in seconds (1 hour)
     for session_id in to_remove:
         session_memories.pop(session_id, None)
         last_active_time.pop(session_id, None)
-        logger.info(f"Session {session_id} has been cleaned up due to inactivity.")
+        logger.info(
+            f"Session {session_id} has been cleaned up due to inactivity.")
+
 
 # Function to clear the .cache directory
 def clear_cache():
@@ -129,12 +142,14 @@ def clear_cache():
     except Exception as e:
         logger.error(f"Error while clearing cache: {e}")
 
+
 # Background task to clear inactive sessions and cache every 20 minutes
 async def periodic_reset():
     while True:
         await asyncio.sleep(20 * 60)  # Wait for 20 minutes
         cleanup_sessions()
         clear_cache()
+
 
 app = FastAPI(title="LangChain Server with Knowledge Base")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -145,15 +160,18 @@ UPLOAD_DIRECTORY = "temp_files"
 if not os.path.exists(UPLOAD_DIRECTORY):
     os.makedirs(UPLOAD_DIRECTORY)
 
+
 # Model to handle chat input with session_id
 class ChatInput(BaseModel):
     session_id: str
     input_text: str
 
+
 # Login Page
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     return RedirectResponse(url="/login")
+
 
 # Verify password and set a session cookie
 @app.post("/login")
@@ -168,17 +186,20 @@ async def login(response: Response, password: str = Form(...)):
             key="session_token",
             value=session_token,
             httponly=False,  # Allow JavaScript to access the cookie
-            secure=False,    # Set to True in production with HTTPS
-            path="/"         # Set the cookie for the root path so it's accessible everywhere
+            secure=False,  # Set to True in production with HTTPS
+            path=
+            "/"  # Set the cookie for the root path so it's accessible everywhere
         )
 
         return response
     else:
         raise HTTPException(status_code=403, detail="Invalid password")
 
+
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
+
 
 # Chat page that requires login
 @app.get("/chat-page", response_class=HTMLResponse)
@@ -188,6 +209,7 @@ async def get_chat_page(request: Request):
         return templates.TemplateResponse("chat.html", {"request": request})
     else:
         raise HTTPException(status_code=403, detail="Unauthorized")
+
 
 # Chat functionality restricted by session
 @app.post("/chat")
@@ -201,7 +223,8 @@ async def chat(request: Request):
         input_data = ChatInput(**body)
         session_id = input_data.session_id
         input_text = input_data.input_text
-        logger.info(f"Received user input for session {session_id}: {input_text}")
+        logger.info(
+            f"Received user input for session {session_id}: {input_text}")
     except Exception as e:
         logger.error(f"Error parsing input data: {e}")
         return {"error": "Invalid input data"}
@@ -213,7 +236,8 @@ async def chat(request: Request):
         # Retrieve relevant knowledge from the vectorstore
         context = retriever.invoke(input_text)
         context_text = "\n\n".join([doc.page_content for doc in context])
-        logger.info(f"Context retrieved for session {session_id}: {context_text}")
+        logger.info(
+            f"Context retrieved for session {session_id}: {context_text}")
 
         # Build the question with context and memory
         question_with_context = f"{persona_prompt}\n\nContext:\n{context_text}\n\nQuestion: {input_text}"
@@ -225,12 +249,10 @@ async def chat(request: Request):
 
         return {"answer": result}
     except Exception as e:
-        logger.error(f"Error during chat invocation for session {session_id}: {e}")
+        logger.error(
+            f"Error during chat invocation for session {session_id}: {e}")
         return {"error": "Failed to process request"}
 
-
-
-# File upload functionality restricted by session
 @app.post("/upload")
 async def upload_pdf(request: Request, file: UploadFile = File(...)):
     session_token = request.cookies.get("session_token")
@@ -238,16 +260,48 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
         raise HTTPException(status_code=403, detail="Unauthorized")
 
     logger.info(f"Received file upload request: {file.filename}")
+
     try:
+        # Save the file to the upload directory
         file_location = f"{UPLOAD_DIRECTORY}/{file.filename}"
         with open(file_location, "wb") as f:
             f.write(await file.read())
         logger.info(f"File '{file.filename}' saved successfully at {file_location}.")
-        return {"message": f"File '{file.filename}' uploaded successfully!"}
-    except Exception as e:
-        logger.error(f"Error during file upload: {e}")
-        return {"error": str(e)}
 
+        # Ingest the uploaded PDF into the vector store for this session
+        loader = UnstructuredPDFLoader(file_location)
+        docs = loader.load()
+        logger.info(f"Loaded {len(docs)} documents from the uploaded PDF.")
+
+        # Split the documents into chunks for embedding
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        chunks = text_splitter.split_documents(docs)
+        logger.info(f"Split the uploaded PDF into {len(chunks)} chunks.")
+
+        # Create embeddings and add them to the vector store for this session
+        embeddings = OpenAIEmbeddings()
+
+        # Check if this session already has a vectorstore
+        session_vectorstore_path = f"faiss_vectorstore_{session_token}"
+        if os.path.exists(session_vectorstore_path):
+            # Load the existing vectorstore for this session
+            vectorstore = FAISS.load_local(session_vectorstore_path, embeddings, allow_dangerous_deserialization=True)
+            logger.info(f"Loaded existing vectorstore for session {session_token}.")
+        else:
+            # Create a new vectorstore if it doesn't exist for this session
+            vectorstore = FAISS.from_documents(documents=chunks, embedding=embeddings)
+            logger.info(f"Created new vectorstore for session {session_token}.")
+
+        # Update the vectorstore with the new document chunks
+        vectorstore.add_documents(chunks)
+        vectorstore.save_local(session_vectorstore_path)
+        logger.info(f"Updated vectorstore for session {session_token} with the new document.")
+
+        return {"message": f"File '{file.filename}' uploaded and ingested successfully!"}
+
+    except Exception as e:
+        logger.error(f"Error during file upload and ingestion: {e}")
+        return {"error": str(e)}
 
 # Start the background task when the FastAPI app starts
 @app.on_event("startup")

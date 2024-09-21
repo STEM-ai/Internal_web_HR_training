@@ -3,27 +3,102 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat and Upload</title>
+    <title>Chat and PDF Upload</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+    <div class="chat-container">
+        <!-- Chatbox Section -->
+        <div id="chat-box" class="chat-box">
+            <!-- Chat messages will be displayed here -->
+        </div>
 
-<!-- Main Chat Container -->
-<div class="chat-container">
-    <h1>Chat with AI Agent of SNS Health Group Inc</h1>
+        <!-- Chat input form -->
+        <form id="chat-form">
+            <input type="text" id="chat_input" name="chat_input" placeholder="Type your message..." required>
+            <button type="submit">Send</button>
+        </form>
 
-    <!-- Chat Box -->
-    <div id="chat-box">
-        <!-- Messages will be displayed here -->
+        <!-- PDF Upload Section -->
+        <div class="upload-container">
+            <h2>Upload a PDF</h2>
+            <form id="upload-form" method="POST" enctype="multipart/form-data" action="/upload">
+                <input type="file" id="file" name="file" accept="application/pdf" required>
+                <button type="submit">Upload</button>
+            </form>
+            <!-- Hidden checkbox that will be shown when the upload is successful -->
+            <label>
+                <input type="checkbox" id="upload-success" style="display: none;" disabled>
+                File uploaded successfully
+            </label>
+        </div>
     </div>
 
-    <!-- Chat Form -->
-    <form id="chat-form">
-        <input type="text" id="chat_input" placeholder="Enter your message" required>
-        <button type="submit">Send</button>
-    </form>
-</div>
+    <script>
+        // Handle chat form submission
+        document.getElementById('chat-form').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const chatInput = document.getElementById('chat_input').value;
+            const sessionId = document.cookie.split('=')[1];  // Extract session_id from cookie
 
-<script src="/static/app.js"></script>
+            const chatData = {
+                session_id: sessionId,
+                input_text: chatInput
+            };
+
+            console.log("Sending chat data:", chatData);
+
+            const response = await fetch("/chat", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(chatData),
+            });
+
+            const result = await response.json();
+            console.log("Chat response:", result);
+
+            // Display chat message in chat-box
+            const chatBox = document.getElementById('chat-box');
+            const userMessage = document.createElement('div');
+            userMessage.classList.add('user-message');
+            userMessage.innerText = chatInput;
+            chatBox.appendChild(userMessage);
+
+            const botMessage = document.createElement('div');
+            botMessage.classList.add('ai-message');
+            botMessage.innerText = result.answer;
+            chatBox.appendChild(botMessage);
+
+            // Clear input
+            document.getElementById('chat_input').value = '';
+        });
+
+        // Handle PDF upload form submission
+        document.getElementById('upload-form').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            
+            const formData = new FormData();
+            const fileInput = document.getElementById('file');
+            formData.append('file', fileInput.files[0]);
+
+            const response = await fetch("/upload", {
+                method: "POST",
+                body: formData
+            });
+
+            const result = await response.json();
+            if (response.ok) {
+                console.log("Upload successful:", result.message);
+                // Show the checkbox when upload is successful
+                document.getElementById('upload-success').style.display = 'inline-block';
+                document.getElementById('upload-success').checked = true;
+            } else {
+                console.error("Upload failed:", result.error);
+                alert("File upload failed!");
+            }
+        });
+    </script>
 </body>
 </html>
