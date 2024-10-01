@@ -19,6 +19,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain.chains.conversation.memory import ConversationBufferMemory
 from langchain.chains import ConversationChain
+from transformers import pipeline
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -39,6 +40,9 @@ PASSWORD = "test"  #PASSWORD = os.getenv('ACCESS_PASSWORD', 'securepassword') # 
 # Store conversation memories and last active time keyed by session_id
 session_memories = {}
 last_active_time = {}
+
+speech_recognition_pipeline = pipeline("automatic-speech-recognition", model="openai/whisper-tiny")
+
 
 persona_prompt = (
     "You are a friendly representative of Kay Soley, knowledgeable about solar energy. Answer in the same language as the user. Don't say Hello. Your goal is to engage in a natural conversation, and answer based on the Solar Guide any questions the user may have. Do not ask for personal information at this stage.\n If a question cannot be asnwered by the content of the Solar Guide, say that you are unsure and that the user should ask this question to one of our Technicians during a telephone or home appointment.\n Clarity and Conciseness: Use bullet points or numbered lists for clarity in your responses, and keep responses concise, limited to 2-3 sentences."
@@ -319,6 +323,39 @@ async def chat(request: Request):
     except Exception as e:
         logger.error(f"Error during chat invocation for session {session_id}: {e}")
         return {"error": "Failed to process request"}
+
+@app.post("/upload-audio")
+async def upload_audio(session_id: str, file: UploadFile = File(...)):
+    try:
+        logger.info(f"Received audio file for session {session_id}: {file.filename}")
+
+        # Save the audio file temporarily
+        audio_path = f"{UPLOAD_DIRECTORY}/{file.filename}"
+        with open(audio_path, "wb") as f:
+            f.write(await file.read())
+        logger.info(f"Audio file '{file.filename}' saved successfully at {audio_path}.")
+
+        # Convert speech to text using the whisper model
+        transcription = speech_recognition_pipeline(audio_path)["text"]
+        logger.info(f"Transcription for session {session_id}: {transcription}")
+
+        # Use transcription as input to the chat
+        input_data = ChatInput(session_id=session_id, input_text=transcription)
+        memory = get_conversation_memory(session_id)
+        context = retriever.invoke(transcription)
+        context_text = "\n\n".join([doc.page_content for doc in context])
+
+        question_with_context = f"{persona_prompt}\n\nContext:\n{context_text}\n\nQuestion: {transcription}"
+        conversation_chain = ConversationChain(llm=llm, memory=memory)
+        response = conversation_chain.run(question_with_context)
+        logger.info(f"Generated response for session {session_id}: {response}")
+
+        return {"message": "Audio processed successfully", "answer": response}
+
+    except Exception as e:
+        logger.error(f"Error during audio upload and processing for session {session_id}: {e}")
+        return {"error": str(e)}
+
                 
 # Start the background task when the FastAPI app starts
 @app.on_event("startup")

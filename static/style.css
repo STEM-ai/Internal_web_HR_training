@@ -117,3 +117,29 @@ input[type="file"] {
 .upload-container button {
   padding: 10px; /* Reduce padding */
 }
+
+.audio-container {
+  margin-top: 20px;
+  text-align: center;
+}
+
+#start-recording, #stop-recording {
+  margin: 5px;
+  padding: 10px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+#start-recording:disabled, #stop-recording:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+#audio-preview {
+  margin-top: 10px;
+  width: 100%;
+}

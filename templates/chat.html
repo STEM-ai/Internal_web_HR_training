@@ -19,6 +19,12 @@
             <input type="text" id="chat_input" name="chat_input" placeholder="Type your message..." required>
             <button type="submit">Send</button>
         </form>
+        <div class="audio-container">
+            <h2>Record Your Audio</h2>
+            <button id="start-recording">Start Recording</button>
+            <button id="stop-recording" disabled>Stop Recording</button>
+            <audio id="audio-preview" controls></audio>
+        </div>
 
         <!-- PDF Upload Section -->
         <div class="upload-container">
@@ -106,5 +112,8 @@
             }
         });
     </script>
+
+    <!-- Link the external JavaScript file -->
+    <script src="/static/app.js"></script>
 </body>
 </html>
