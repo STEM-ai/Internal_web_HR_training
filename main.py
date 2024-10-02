@@ -21,6 +21,8 @@ from langchain_community.vectorstores import FAISS
 from langchain.chains.conversation.memory import ConversationBufferMemory
 from langchain.chains import ConversationChain
 from transformers import pipeline
+from transformers import WhisperProcessor, WhisperForConditionalGeneration
+from melo.api import TTS
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -42,11 +44,17 @@ PASSWORD = "test"  #PASSWORD = os.getenv('ACCESS_PASSWORD', 'securepassword') # 
 session_memories = {}
 last_active_time = {}
 
-speech_recognition_pipeline = pipeline("automatic-speech-recognition",
-                                       model="openai/whisper-tiny")
+processor = WhisperProcessor.from_pretrained("openai/whisper-small")
+model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-small")
+forced_decoder_ids = processor.get_decoder_prompt_ids(language="french", task="transcribe")
+
+# Anglais
+
+# speech_recognition_pipeline = pipeline("automatic-speech-recognition",
+#                                        model="openai/whisper-base")
 
 persona_prompt = (
-    "You are a friendly representative of Kay Soley, knowledgeable about solar energy. Answer in the same language as the user. Don't say Hello. Your goal is to engage in a natural conversation, and answer based on the Solar Guide any questions the user may have. Do not ask for personal information at this stage.\n If a question cannot be asnwered by the content of the Solar Guide, say that you are unsure and that the user should ask this question to one of our Technicians during a telephone or home appointment.\n Clarity and Conciseness: Use bullet points or numbered lists for clarity in your responses, and keep responses concise, limited to 2-3 sentences."
+    "Vous êtes un représentant amical de Kay Soley, expert en énergie solaire. Répondez dans la même langue que l'utilisateur. Ne dites pas Bonjour. Votre objectif est de mener une conversation naturelle et de répondre aux questions de l'utilisateur en vous basant sur le Guide Solaire. Ne demandez pas d'informations personnelles à ce stade.\n Si une question ne peut pas être répondue par le contenu du Guide Solaire, dites que vous n'êtes pas sûr et que l'utilisateur devrait poser cette question à l'un de nos Techniciens lors d'un rendez-vous téléphonique ou à domicile.\n Clarté et concision : Utilisez des listes à puces ou numérotées pour plus de clarté dans vos réponses, et gardez-les concises, limitées à 2-3 phrases."
 )
 
 UPLOAD_DIRECTORY = "temp_files"
@@ -56,31 +64,45 @@ if not os.path.exists(UPLOAD_DIRECTORY):
 
 
 def generate_voice_response(text: str) -> bytes:
-    elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
-    voice_id = os.getenv("ELEVENLABS_VOICE_ID")
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+    # ElevenLabs Code (English)
+    # elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
+    # voice_id = os.getenv("ELEVENLABS_VOICE_ID")
+    # url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
-    headers = {
-        "Content-Type": "application/json",
-        "xi-api-key": elevenlabs_api_key,
-    }
+    # headers = {
+    #     "Content-Type": "application/json",
+    #     "xi-api-key": elevenlabs_api_key,
+    # }
 
-    payload = {
-        "text": text,
-        "voice_settings": {
-            "stability": 0.5,
-            "similarity_boost": 0.75
-        }
-    }
+    # payload = {
+    #     "text": text,
+    #     "voice_settings": {
+    #         "stability": 0.5,
+    #         "similarity_boost": 0.75
+    #     }
+    # }
 
-    # Make the request to the ElevenLabs API
-    response = requests.post(url, headers=headers, json=payload)
+    # response = requests.post(url, headers=headers, json=payload)
 
-    if response.status_code != 200:
-        raise Exception(f"Failed to generate speech: {response.text}")
+    # if response.status_code != 200:
+    #     raise Exception(f"Failed to generate speech: {response.text}")
 
-    # Return the audio content as bytes
-    return response.content
+    # return response.content
+
+    # MeloTTS-French Code
+    speed = 1.2  # Speed is adjustable
+    device = 'cpu'  # or 'cuda:0' for GPU usage
+
+    model = TTS(language='FR', device=device)
+    speaker_ids = model.hps.data.spk2id
+
+    output_path = 'fr.wav'  # Path to save the generated speech
+
+
+    model.tts_to_file(text, speaker_ids['FR'], output_path, speed=speed)
+
+    with open(output_path, 'rb') as audio_file:
+       return audio_file.read()
 
 
 # Function to calculate file hash
@@ -396,7 +418,15 @@ async def upload_audio(session_id: str, file: UploadFile = File(...)):
         )
 
         # Convert speech to text using the whisper model
-        transcription = speech_recognition_pipeline(audio_path)["text"]
+        asr_pipe = pipeline(
+            "automatic-speech-recognition",
+            model=model,
+            feature_extractor=processor.feature_extractor,
+            tokenizer=processor.tokenizer,
+            chunk_length_s=30
+        )
+        transcription = asr_pipe(audio_path, generate_kwargs={"forced_decoder_ids": forced_decoder_ids})["text"]
+        #transcription = speech_recognition_pipeline(audio_path)["text"]
         logger.info(f"Transcription for session {session_id}: {transcription}")
 
         # Generate a response based on the transcription
@@ -419,10 +449,11 @@ async def upload_audio(session_id: str, file: UploadFile = File(...)):
 
         logger.info(f"Voice response saved at {response_audio_path}")
 
-        # Return the path of the generated audio and the text response
+        # Return the path of the generated audio, text response, and transcription
         return {
             "answer": result,
-            "audio_path": f"/temp_files/response_{session_id}.mp3"
+            "audio_path": f"/temp_files/response_{session_id}.mp3",
+            "transcription": transcription
         }
 
     except Exception as e:

@@ -148,8 +148,14 @@ document.getElementById('stop-recording').addEventListener('click', async () => 
                 const result = await response.json();
                 console.log("Audio processing result:", result);
 
-                // Display the text answer in the chat
+                // Display the transcribed message as a user message
                 const chatBox = document.getElementById('chat-box');
+                const userMessage = document.createElement('div');
+                userMessage.classList.add('user-message');
+                userMessage.innerText = result.transcription;  // Display the transcription
+                chatBox.appendChild(userMessage);
+
+                // Display the AI response as a bot message
                 const botMessage = document.createElement('div');
                 botMessage.classList.add('ai-message');
                 botMessage.innerText = result.answer;
@@ -160,6 +166,10 @@ document.getElementById('stop-recording').addEventListener('click', async () => 
                     const audio = new Audio(result.audio_path);
                     audio.play();
                 }
+
+                // Scroll to the bottom of the chat box
+                chatBox.scrollTop = chatBox.scrollHeight;
+
             } catch (error) {
                 console.error("Error uploading audio:", error);
             }

@@ -2406,6 +2406,21 @@ files = [
 ]
 
 [[package]]
+name = "melo"
+version = "1.1.0"
+description = "Margin dependent Elo ratings and predictions."
+optional = false
+python-versions = "*"
+files = [
+    {file = "melo-1.1.0-py3-none-any.whl", hash = "sha256:97b075ee1995a59e540f4eb67c1ac8a28cff86a85061c295d28745dd1b7d38d3"},
+    {file = "melo-1.1.0.tar.gz", hash = "sha256:4dd95bcf4064a95cd9cae0af3ccc7518ac19bddbcbb3d4e0c070cda5a734f566"},
+]
+
+[package.dependencies]
+numpy = "*"
+scipy = ">=0.18.0"
+
+[[package]]
 name = "mmh3"
 version = "4.1.0"
 description = "Python extension for MurmurHash (MurmurHash3), a set of fast and robust hash functions."
@@ -6039,4 +6054,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = "3.10.14"
-content-hash = "a1188ce479fa90f2794ac80b6ea025403d2bb7cb5585f7ca4e8dd8f5bf8b42de"
+content-hash = "ceb9a01eb8df8610cb45d2b1013eefea931e0f0b827345b4430c447ffc6f51ff"
