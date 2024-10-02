@@ -1,4 +1,5 @@
 import os
+import requests
 import asyncio
 import hashlib
 import logging
@@ -41,8 +42,8 @@ PASSWORD = "test"  #PASSWORD = os.getenv('ACCESS_PASSWORD', 'securepassword') # 
 session_memories = {}
 last_active_time = {}
 
-speech_recognition_pipeline = pipeline("automatic-speech-recognition", model="openai/whisper-tiny")
-
+speech_recognition_pipeline = pipeline("automatic-speech-recognition",
+                                       model="openai/whisper-tiny")
 
 persona_prompt = (
     "You are a friendly representative of Kay Soley, knowledgeable about solar energy. Answer in the same language as the user. Don't say Hello. Your goal is to engage in a natural conversation, and answer based on the Solar Guide any questions the user may have. Do not ask for personal information at this stage.\n If a question cannot be asnwered by the content of the Solar Guide, say that you are unsure and that the user should ask this question to one of our Technicians during a telephone or home appointment.\n Clarity and Conciseness: Use bullet points or numbered lists for clarity in your responses, and keep responses concise, limited to 2-3 sentences."
@@ -52,6 +53,34 @@ UPLOAD_DIRECTORY = "temp_files"
 
 if not os.path.exists(UPLOAD_DIRECTORY):
     os.makedirs(UPLOAD_DIRECTORY)
+
+
+def generate_voice_response(text: str) -> bytes:
+    elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
+    voice_id = os.getenv("ELEVENLABS_VOICE_ID")
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+
+    headers = {
+        "Content-Type": "application/json",
+        "xi-api-key": elevenlabs_api_key,
+    }
+
+    payload = {
+        "text": text,
+        "voice_settings": {
+            "stability": 0.5,
+            "similarity_boost": 0.75
+        }
+    }
+
+    # Make the request to the ElevenLabs API
+    response = requests.post(url, headers=headers, json=payload)
+
+    if response.status_code != 200:
+        raise Exception(f"Failed to generate speech: {response.text}")
+
+    # Return the audio content as bytes
+    return response.content
 
 
 # Function to calculate file hash
@@ -156,6 +185,9 @@ async def periodic_reset():
 
 
 app = FastAPI(title="LangChain Server with Knowledge Base")
+app.mount("/temp_files",
+          StaticFiles(directory="temp_files"),
+          name="temp_files")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
@@ -214,8 +246,10 @@ async def get_chat_page(request: Request):
     else:
         raise HTTPException(status_code=403, detail="Unauthorized")
 
+
 # Global dictionary to store filenames for each session
 uploaded_files = {}
+
 
 @app.post("/upload")
 async def upload_pdf(request: Request, file: UploadFile = File(...)):
@@ -230,7 +264,8 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
         file_location = f"{UPLOAD_DIRECTORY}/{file.filename}"
         with open(file_location, "wb") as f:
             f.write(await file.read())
-        logger.info(f"File '{file.filename}' saved successfully at {file_location}.")
+        logger.info(
+            f"File '{file.filename}' saved successfully at {file_location}.")
 
         # Ingest the uploaded PDF into the vector store for this session
         loader = UnstructuredPDFLoader(file_location)
@@ -238,7 +273,8 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
         logger.info(f"Loaded {len(docs)} documents from the uploaded PDF.")
 
         # Split the documents into chunks for embedding
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000,
+                                                       chunk_overlap=200)
         chunks = text_splitter.split_documents(docs)
         logger.info(f"Split the uploaded PDF into {len(chunks)} chunks.")
 
@@ -249,26 +285,38 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
         session_vectorstore_path = f"faiss_vectorstore_{session_token}"
         if os.path.exists(session_vectorstore_path):
             # Load the existing vectorstore for this session
-            vectorstore = FAISS.load_local(session_vectorstore_path, embeddings, allow_dangerous_deserialization=True)
-            logger.info(f"Loaded existing vectorstore for session {session_token}.")
+            vectorstore = FAISS.load_local(
+                session_vectorstore_path,
+                embeddings,
+                allow_dangerous_deserialization=True)
+            logger.info(
+                f"Loaded existing vectorstore for session {session_token}.")
         else:
             # Create a new vectorstore if it doesn't exist for this session
-            vectorstore = FAISS.from_documents(documents=chunks, embedding=embeddings)
-            logger.info(f"Created new vectorstore for session {session_token}.")
+            vectorstore = FAISS.from_documents(documents=chunks,
+                                               embedding=embeddings)
+            logger.info(
+                f"Created new vectorstore for session {session_token}.")
 
         # Update the vectorstore with the new document chunks
         vectorstore.add_documents(chunks)
         vectorstore.save_local(session_vectorstore_path)
-        logger.info(f"Updated vectorstore for session {session_token} with the new document.")
+        logger.info(
+            f"Updated vectorstore for session {session_token} with the new document."
+        )
 
         # Store the uploaded filename for this session
         uploaded_files[session_token] = file.filename
 
-        return {"message": f"File '{file.filename}' uploaded and ingested successfully!"}
+        return {
+            "message":
+            f"File '{file.filename}' uploaded and ingested successfully!"
+        }
 
     except Exception as e:
         logger.error(f"Error during file upload and ingestion: {e}")
         return {"error": str(e)}
+
 
 # Chat functionality restricted by session
 @app.post("/chat")
@@ -282,7 +330,8 @@ async def chat(request: Request):
         input_data = ChatInput(**body)
         session_id = input_data.session_id
         input_text = input_data.input_text
-        logger.info(f"Received user input for session {session_id}: {input_text}")
+        logger.info(
+            f"Received user input for session {session_id}: {input_text}")
     except Exception as e:
         logger.error(f"Error parsing input data: {e}")
         return {"error": "Invalid input data"}
@@ -294,14 +343,20 @@ async def chat(request: Request):
         # Retrieve relevant knowledge from the vectorstore
         context = retriever.invoke(input_text)
         context_text = "\n\n".join([doc.page_content for doc in context])
-        logger.info(f"Context retrieved for session {session_id}: {context_text}")
+        logger.info(
+            f"Context retrieved for session {session_id}: {context_text}")
 
         # Check if a PDF has been uploaded for this session
         session_vectorstore_path = f"faiss_vectorstore_{session_id}"
         if os.path.exists(session_vectorstore_path):
-            logger.info(f"Loading vector store from uploaded PDF for session {session_id}.")
+            logger.info(
+                f"Loading vector store from uploaded PDF for session {session_id}."
+            )
             # Load the session's vectorstore and retrieve the PDF content
-            vectorstore = FAISS.load_local(session_vectorstore_path, OpenAIEmbeddings(), allow_dangerous_deserialization=True)
+            vectorstore = FAISS.load_local(
+                session_vectorstore_path,
+                OpenAIEmbeddings(),
+                allow_dangerous_deserialization=True)
             pdf_context = vectorstore.similarity_search(input_text)
             pdf_text = "\n\n".join([doc.page_content for doc in pdf_context])
 
@@ -321,42 +376,62 @@ async def chat(request: Request):
 
         return {"answer": result}
     except Exception as e:
-        logger.error(f"Error during chat invocation for session {session_id}: {e}")
+        logger.error(
+            f"Error during chat invocation for session {session_id}: {e}")
         return {"error": "Failed to process request"}
+
 
 @app.post("/upload-audio")
 async def upload_audio(session_id: str, file: UploadFile = File(...)):
     try:
-        logger.info(f"Received audio file for session {session_id}: {file.filename}")
+        logger.info(
+            f"Received audio file for session {session_id}: {file.filename}")
 
         # Save the audio file temporarily
         audio_path = f"{UPLOAD_DIRECTORY}/{file.filename}"
         with open(audio_path, "wb") as f:
             f.write(await file.read())
-        logger.info(f"Audio file '{file.filename}' saved successfully at {audio_path}.")
+        logger.info(
+            f"Audio file '{file.filename}' saved successfully at {audio_path}."
+        )
 
         # Convert speech to text using the whisper model
         transcription = speech_recognition_pipeline(audio_path)["text"]
         logger.info(f"Transcription for session {session_id}: {transcription}")
 
-        # Use transcription as input to the chat
-        input_data = ChatInput(session_id=session_id, input_text=transcription)
+        # Generate a response based on the transcription
         memory = get_conversation_memory(session_id)
         context = retriever.invoke(transcription)
         context_text = "\n\n".join([doc.page_content for doc in context])
-
         question_with_context = f"{persona_prompt}\n\nContext:\n{context_text}\n\nQuestion: {transcription}"
         conversation_chain = ConversationChain(llm=llm, memory=memory)
-        response = conversation_chain.run(question_with_context)
-        logger.info(f"Generated response for session {session_id}: {response}")
+        result = conversation_chain.run(question_with_context)
+        logger.info(
+            f"Generated text response for session {session_id}: {result}")
 
-        return {"message": "Audio processed successfully", "answer": response}
+        # Generate voice response from ElevenLabs
+        voice_response = generate_voice_response(result)
+
+        # Save the generated audio response
+        response_audio_path = f"{UPLOAD_DIRECTORY}/response_{session_id}.mp3"
+        with open(response_audio_path, "wb") as audio_file:
+            audio_file.write(voice_response)
+
+        logger.info(f"Voice response saved at {response_audio_path}")
+
+        # Return the path of the generated audio and the text response
+        return {
+            "answer": result,
+            "audio_path": f"/temp_files/response_{session_id}.mp3"
+        }
 
     except Exception as e:
-        logger.error(f"Error during audio upload and processing for session {session_id}: {e}")
+        logger.error(
+            f"Error during audio upload and processing for session {session_id}: {e}"
+        )
         return {"error": str(e)}
 
-                
+
 # Start the background task when the FastAPI app starts
 @app.on_event("startup")
 async def startup_event():

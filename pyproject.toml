@@ -28,6 +28,7 @@ langchain-core = "^0.2.33"
 langchain-openai = "^0.1.22"
 torch = "^2.4.1"
 transformers = "^4.45.1"
+requests = "^2.32.3"
 
 
 [build-system]

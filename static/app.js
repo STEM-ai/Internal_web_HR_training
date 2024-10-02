@@ -123,13 +123,49 @@ document.getElementById('start-recording').addEventListener('click', async () =>
     }
 });
 
-document.getElementById('stop-recording').addEventListener('click', () => {
+document.getElementById('stop-recording').addEventListener('click', async () => {
     console.log("Stop recording button clicked");
+
     if (mediaRecorder) {
         mediaRecorder.stop();
+
         document.getElementById('start-recording').disabled = false;
         document.getElementById('stop-recording').disabled = true;
-    } else {
-        console.error("MediaRecorder is not initialized");
+
+        // Handle the recorded audio after stopping
+        mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            const formData = new FormData();
+            formData.append('file', audioBlob, 'recording.webm');
+            const sessionId = document.cookie.split('=')[1];
+
+            try {
+                const response = await fetch(`/upload-audio?session_id=${sessionId}`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                console.log("Audio processing result:", result);
+
+                // Display the text answer in the chat
+                const chatBox = document.getElementById('chat-box');
+                const botMessage = document.createElement('div');
+                botMessage.classList.add('ai-message');
+                botMessage.innerText = result.answer;
+                chatBox.appendChild(botMessage);
+
+                // If audio path is available, play the audio response
+                if (result.audio_path) {
+                    const audio = new Audio(result.audio_path);
+                    audio.play();
+                }
+            } catch (error) {
+                console.error("Error uploading audio:", error);
+            }
+
+            // Reset audio chunks
+            audioChunks = [];
+        };
     }
 });
