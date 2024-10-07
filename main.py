@@ -6,6 +6,7 @@ import hashlib
 import logging
 import uuid  # For generating unique session IDs
 import time
+from openai import OpenAI
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, Request, UploadFile, File, Response
 from fastapi.templating import Jinja2Templates
@@ -45,7 +46,9 @@ PASSWORD = "test"  #PASSWORD = os.getenv('ACCESS_PASSWORD', 'securepassword') # 
 session_memories = {}
 last_active_time = {}
 session_personas = {}
+session_transcripts = {}
 banned_phrase_tracker = {}
+session_exchange_counts = {}
 
 processor = WhisperProcessor.from_pretrained("openai/whisper-small")
 model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-small")
@@ -90,7 +93,17 @@ def select_or_get_persona_and_objective(session_id):
 
     return persona_name, persona_prompt, objective
 
+def check_session_progress(session_id):
+    """Increase the exchange count for a session and return whether the test is completed."""
+    if session_id not in session_exchange_counts:
+        session_exchange_counts[session_id] = 0
+    session_exchange_counts[session_id] += 1
 
+    # Check if the exchange count reaches 
+    if session_exchange_counts[session_id] >= 10:
+        return True
+    return False
+    
 UPLOAD_DIRECTORY = "temp_files"
 
 if not os.path.exists(UPLOAD_DIRECTORY):
@@ -160,6 +173,68 @@ def check_banned_phrases(user_input, session_id):
                 banned_phrase_tracker[session_id][phrase] += 1
 
     return triggered_phrases
+
+def store_exchange_in_transcript(session_id, user_input, ai_response):
+    """Store the user input and AI response in the session's transcript."""
+    if session_id not in session_transcripts:
+        session_transcripts[session_id] = []
+    session_transcripts[session_id].append(f"User: {user_input}\nAI: {ai_response}")
+
+def submit_transcript_to_analysis_llm(session_id):
+    """Submit the transcript of the session to a separate LLM for analysis or summary."""
+    transcript = "\n\n".join(session_transcripts[session_id])
+    logger.info(f"Submitting transcript for session {session_id} to analysis LLM.")
+
+    # Initialize the OpenAI client
+    client = OpenAI()
+
+    # Prepare the analysis prompt in French
+    analysis_prompt = (
+        "Vous allez recevoir une transcription d'une session de jeu de rôle entre un stagiaire et un client simulé intéressé par les services d'Airzoon. "
+        "Votre tâche est d'évaluer dans quelle mesure le stagiaire a suivi les meilleures pratiques de vente et de traitement des objections, en vous basant sur les critères suivants :\n\n"
+
+        "1. **Traitement des objections lors de l’entretien commerciales** : Le stagiaire a-t-il géré efficacement les objections ? Évaluez spécifiquement s'il/elle a :\n"
+        "- Accueilli les objections avec patience (par exemple, en reconnaissant l'objection sans interrompre).\n"
+        "- Accusé réception de la préoccupation sans jugement (par exemple, 'Je comprends').\n"
+        "- Isolé l'objection pour voir si elle est la seule préoccupation (par exemple, 'Hormis ce point, est-ce que globalement l’offre vous convient ?').\n"
+        "- Creusé ou découvert la cause profonde de l'objection.\n"
+        "- Pratiqué l'écoute active, reformulé l'objection, et clarifié avec des questions si nécessaire.\n"
+        "- Offert des solutions ou des réponses à l'objection en mettant en avant des avantages et des preuves.\n"
+        "- Récapitulé les avantages et validé la compréhension du client (par exemple, 'Cela répond à votre question ?').\n\n"
+
+        "2. **Offres commerciales spéciales en cours** : Le stagiaire a-t-il utilisé efficacement les offres commerciales spéciales ? Évaluez spécifiquement s'il/elle a :\n"
+        "- Proposé des offres spéciales de manière appropriée lorsque le client n’avait pas d’objection mais hésitait à s’engager.\n"
+        "- Expliqué clairement les conditions des offres, telles que l’éligibilité, le timing, et les types de campagnes (par exemple, campagnes de communication par e-mail ou SMS).\n"
+        "- Adapté l’offre aux besoins de l'entreprise du client et a apporté un sens d’urgence ou de valeur à l’offre.\n\n"
+
+        "3. **Étapes clés de l’entretien de vente** : Le stagiaire a-t-il respecté les étapes clés de la conversation de vente ? Évaluez s'il/elle a :\n"
+        "- Ouvert la conversation en établissant un lien et en définissant le cadre du rendez-vous (par exemple, en brisant la glace).\n"
+        "- Posé des questions ouvertes pour découvrir les besoins du client et identifié au moins trois besoins principaux.\n"
+        "- Répondu aux besoins identifiés avec des arguments et a traité efficacement les objections.\n"
+        "- Présenté une démonstration ou un exemple, soit en direct, soit en se référant au succès d’un client existant.\n"
+        "- Conclu l’entretien en confirmant les prochaines étapes, en obtenant un accord, ou en planifiant des actions de suivi.\n\n"
+
+        "Après avoir analysé la transcription selon ces critères, veuillez fournir une évaluation détaillée. Mettez en avant les points forts et les axes d'amélioration, et donnez une appréciation globale de la performance du stagiaire dans cet exercice de jeu de rôle.\n\n"
+
+        "Transcription :\n\n" + transcript
+    )
+
+    # Make the API call to OpenAI to get the analysis
+    completion = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "Vous êtes un assistant analysant des transcriptions de sessions de jeu de rôle pour la formation des ventes."},
+            {"role": "user", "content": analysis_prompt}
+        ]
+    )
+
+    # Extract the response
+    response = completion.choices[0].message
+
+    # Log the analysis result
+    logger.info(f"Analysis response for session {session_id}: {response}")
+
+    return response
 
 # Function to calculate file hash
 def calculate_file_hash(filepath):
@@ -241,7 +316,10 @@ def cleanup_sessions(timeout=3600):  # Timeout in seconds (1 hour)
         session_memories.pop(session_id, None)
         last_active_time.pop(session_id, None)
         session_personas.pop(session_id, None)
+        session_transcripts.pop(session_id, None)
         banned_phrase_tracker.pop(session_id, None)
+        session_exchange_counts.pop(session_id, None)
+        
         logger.info(
             f"Session {session_id} has been cleaned up due to inactivity.")
 
@@ -412,15 +490,21 @@ async def chat(request: Request):
         logger.error(f"Error parsing input data: {e}")
         return {"error": "Invalid input data"}
 
+    # Check the progress of the session and if the test is complete
+    if check_session_progress(session_id):
+        analysis_response = submit_transcript_to_analysis_llm(session_id)
+        return {"answer": "Test completed, thank you for your participation!"}
+
     # Get or select the persona and objective for this session
     persona_name, persona_prompt, objective = select_or_get_persona_and_objective(session_id)
     logger.info(f"Using persona '{persona_name}' for session {session_id} with objective: {objective}")
 
     # Ensure that the persona prompt emphasizes role-playing and includes the objective
     role_play_instruction = (
-        f"You are {persona_name}, and you are interacting with the user as if you are a real client. "
-        f"Your objective is to help the user (the trainee) learn how to {objective}. Do not mention that you are an AI. "
-        "Respond to all questions as {persona_name} would, based on their background and personality traits."
+        f"You are {persona_name}, a potential client interested in Airzoon's services. "
+        f"Your goal is to learn more about how Airzoon can help you achieve your business objectives based on your situation: {objective}. "
+        "Throughout the conversation, ask relevant questions and share your needs as a client inquiring about the Airzoon services, evolving based on the user's responses."
+        " Remember, you are role-playing as {persona_name} and must not reveal you are an AI. "
     )
 
     full_persona_prompt = f"{role_play_instruction}\n\n{persona_prompt}"
@@ -446,7 +530,10 @@ async def chat(request: Request):
         conversation_chain = ConversationChain(llm=llm, memory=memory)
         result = conversation_chain.run(question_with_context)
         logger.info(f"Generated response for session {session_id}: {result}")
-
+        
+        # Store exchange in session transcript
+        store_exchange_in_transcript(session_id, input_text, result)
+        
         return {
             "answer": result,
             "triggered_phrases": triggered_phrases
