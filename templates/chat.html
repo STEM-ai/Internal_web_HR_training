@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat and PDF Upload</title>
+    <title>Chat Interface</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
     <div class="chat-container">
-        <h1>Internal HR AI Agent</h1>
+        <h1>Internal AI Agent Trainer</h1>
         <!-- Chatbox Section -->
         <div id="chat-box" class="chat-box">
             <!-- Chat messages will be displayed here -->
@@ -25,56 +25,9 @@
             <button id="stop-recording" disabled>Stop Recording</button>
             <audio id="audio-preview" controls></audio>
         </div>
-
-        <!-- PDF Upload Section -->
-        <div class="upload-container">
-            <h2>Upload a PDF</h2>
-            <form id="upload-form" method="POST" enctype="multipart/form-data" action="/upload">
-                <input type="file" id="file" name="file" accept="application/pdf" required>
-                <button type="submit">Upload</button>
-            </form>
-
-            <!-- Message and checkbox will remain hidden initially -->
-            <div id="upload-success-container" style="display: none;">
-                <label>
-                    <input type="checkbox" id="upload-success" disabled>
-                    File uploaded successfully
-                </label>
-            </div>
-        </div>
     </div>
 
-    <script>
-
-        // Handle PDF upload form submission
-        document.getElementById('upload-form').addEventListener('submit', async function(event) {
-            event.preventDefault();
-            
-            const formData = new FormData();
-            const fileInput = document.getElementById('file');
-            formData.append('file', fileInput.files[0]);
-
-            const response = await fetch("/upload", {
-                method: "POST",
-                body: formData
-            });
-
-            const result = await response.json();
-            if (response.ok) {
-                console.log("Upload successful:", result.message);
-                
-                // Show the message and checkbox when upload is successful
-                const successContainer = document.getElementById('upload-success-container');
-                successContainer.style.display = 'block';  // Make the message visible
-                document.getElementById('upload-success').checked = true;  // Check the checkbox
-            } else {
-                console.error("Upload failed:", result.error);
-                alert("File upload failed!");
-            }
-        });
-    </script>
-
-    <!-- Link the external JavaScript file -->
+    <!-- Place your script at the end of the body -->
     <script src="/static/app.js"></script>
 </body>
 </html>
