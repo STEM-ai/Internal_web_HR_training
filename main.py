@@ -1,4 +1,5 @@
 import os
+import random
 import requests
 import asyncio
 import hashlib
@@ -33,7 +34,7 @@ load_dotenv()
 
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
-DOCUMENT_PATH = "docs/HR_internal.pdf"
+DOCUMENT_PATH = "docs/airzoon.pdf"
 HASH_FILE = "document_hash.txt"
 VECTOR_STORE_PATH = "faiss_vector_db"
 
@@ -43,19 +44,52 @@ PASSWORD = "test"  #PASSWORD = os.getenv('ACCESS_PASSWORD', 'securepassword') # 
 # Store conversation memories and last active time keyed by session_id
 session_memories = {}
 last_active_time = {}
+session_personas = {}
+banned_phrase_tracker = {}
 
 processor = WhisperProcessor.from_pretrained("openai/whisper-small")
 model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-small")
-forced_decoder_ids = processor.get_decoder_prompt_ids(language="french", task="transcribe")
+forced_decoder_ids = processor.get_decoder_prompt_ids(language="french",
+                                                      task="transcribe")
 
 # Anglais
 
 # speech_recognition_pipeline = pipeline("automatic-speech-recognition",
 #                                        model="openai/whisper-base")
 
-persona_prompt = (
-    "Vous êtes un représentant amical de Kay Soley, expert en énergie solaire. Répondez dans la même langue que l'utilisateur. Ne dites pas Bonjour. Votre objectif est de mener une conversation naturelle et de répondre aux questions de l'utilisateur en vous basant sur le Guide Solaire. Ne demandez pas d'informations personnelles à ce stade.\n Si une question ne peut pas être répondue par le contenu du Guide Solaire, dites que vous n'êtes pas sûr et que l'utilisateur devrait poser cette question à l'un de nos Techniciens lors d'un rendez-vous téléphonique ou à domicile.\n Clarté et concision : Utilisez des listes à puces ou numérotées pour plus de clarté dans vos réponses, et gardez-les concises, limitées à 2-3 phrases."
-)
+# Define persona prompts based on the PDF    
+personas = {
+    "Marie":
+    "Marie, Propriétaire de Restaurant. Traditionnelle, sceptique envers les nouvelles technologies, budget serré. Son objectif est d'attirer plus de clients locaux tout en maintenant un service client de qualité.",
+    "Paul":
+    "Paul, Gérant de Bar. Ouvert aux innovations mais prudent, préoccupé par la gestion des données clients. Son objectif est de créer une ambiance connectée, fidéliser les clients réguliers, et augmenter la durée des visites.",
+    "Sophie":
+    "Sophie, Propriétaire de Salon d'Esthétique. Innovante, soucieuse de l'expérience client, préoccupée par le ROI. Son objectif est d'augmenter les ventes de produits, attirer une clientèle jeune et technophile, et différencier son salon de la concurrence.",
+    "Jean":
+    "Jean, Gérant de Salon de Coiffure. Expérimenté, prudent avec les nouvelles technologies, préoccupé par les coûts. Son objectif est de fidéliser les clients existants, offrir des promotions attractives, et améliorer le bouche-à-oreille."
+}
+
+persona_objectives = {
+    "Marie": "Vente d'une solution marketing WIFI à un restaurant. L'objectif est de convaincre le propriétaire de souscrire à votre service de marketing WIFI pour attirer plus de clients et augmenter leur fidélité.",
+    "Paul": "Vente d'une solution marketing WIFI à un bar. L'objectif est de vendre la solution pour créer une ambiance connectée et recueillir des données sur les clients pour des campagnes marketing ciblées.",
+    "Sophie": "Vente d'une solution marketing WIFI à un salon d'esthétique. L'objectif est de proposer des services de marketing pour améliorer l'expérience client et promouvoir des offres spéciales via le WIFI.",
+    "Jean": "Vente d'une solution marketing WIFI à un salon de coiffure. L'objectif est de vendre le service pour fidéliser les clients existants et attirer de nouveaux clients grâce à des promotions et des publicités ciblées."
+}
+
+def select_or_get_persona_and_objective(session_id):
+    """Select a random persona and its objective if not already assigned to the session."""
+    if session_id not in session_personas:
+        persona_name = random.choice(list(personas.keys()))
+        session_personas[session_id] = persona_name
+        logger.info(f"Assigned persona '{persona_name}' to session: {session_id}")
+    else:
+        persona_name = session_personas[session_id]
+
+    persona_prompt = personas[persona_name]
+    objective = persona_objectives[persona_name]
+
+    return persona_name, persona_prompt, objective
+
 
 UPLOAD_DIRECTORY = "temp_files"
 
@@ -98,12 +132,34 @@ def generate_voice_response(text: str) -> bytes:
 
     output_path = 'fr.wav'  # Path to save the generated speech
 
-
     model.tts_to_file(text, speaker_ids['FR'], output_path, speed=speed)
 
     with open(output_path, 'rb') as audio_file:
-       return audio_file.read()
+        return audio_file.read()
 
+
+banned_phrases = [
+    "J’ai une petite question", "Pas de soucis", "Sincèrement", "Mais",
+    "Par contre", "Dis toi que", "Dites-vous que", "Quasiment", "Sachez que",
+    "airZoon c’est du WIFI"
+]
+
+def check_banned_phrases(user_input, session_id):
+    """Check if the user input contains any banned phrases and update the tracker for the session."""
+    triggered_phrases = []
+    if session_id not in banned_phrase_tracker:
+        banned_phrase_tracker[session_id] = {}
+
+    for phrase in banned_phrases:
+        if phrase.lower() in user_input.lower():
+            triggered_phrases.append(phrase)
+            # Increment the count or add the phrase to the session's tracker
+            if phrase not in banned_phrase_tracker[session_id]:
+                banned_phrase_tracker[session_id][phrase] = 1
+            else:
+                banned_phrase_tracker[session_id][phrase] += 1
+
+    return triggered_phrases
 
 # Function to calculate file hash
 def calculate_file_hash(filepath):
@@ -184,6 +240,8 @@ def cleanup_sessions(timeout=3600):  # Timeout in seconds (1 hour)
     for session_id in to_remove:
         session_memories.pop(session_id, None)
         last_active_time.pop(session_id, None)
+        session_personas.pop(session_id, None)
+        banned_phrase_tracker.pop(session_id, None)
         logger.info(
             f"Session {session_id} has been cleaned up due to inactivity.")
 
@@ -268,10 +326,8 @@ async def get_chat_page(request: Request):
     else:
         raise HTTPException(status_code=403, detail="Unauthorized")
 
-
 # Global dictionary to store filenames for each session
 uploaded_files = {}
-
 
 @app.post("/upload")
 async def upload_pdf(request: Request, file: UploadFile = File(...)):
@@ -339,7 +395,6 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
         logger.error(f"Error during file upload and ingestion: {e}")
         return {"error": str(e)}
 
-
 # Chat functionality restricted by session
 @app.post("/chat")
 async def chat(request: Request):
@@ -352,11 +407,28 @@ async def chat(request: Request):
         input_data = ChatInput(**body)
         session_id = input_data.session_id
         input_text = input_data.input_text
-        logger.info(
-            f"Received user input for session {session_id}: {input_text}")
+        logger.info(f"Received user input for session {session_id}: {input_text}")
     except Exception as e:
         logger.error(f"Error parsing input data: {e}")
         return {"error": "Invalid input data"}
+
+    # Get or select the persona and objective for this session
+    persona_name, persona_prompt, objective = select_or_get_persona_and_objective(session_id)
+    logger.info(f"Using persona '{persona_name}' for session {session_id} with objective: {objective}")
+
+    # Ensure that the persona prompt emphasizes role-playing and includes the objective
+    role_play_instruction = (
+        f"You are {persona_name}, and you are interacting with the user as if you are a real client. "
+        f"Your objective is to help the user (the trainee) learn how to {objective}. Do not mention that you are an AI. "
+        "Respond to all questions as {persona_name} would, based on their background and personality traits."
+    )
+
+    full_persona_prompt = f"{role_play_instruction}\n\n{persona_prompt}"
+
+    # Check for banned phrases in user input
+    triggered_phrases = check_banned_phrases(input_text, session_id)
+    if triggered_phrases:
+        logger.info(f"Triggered banned phrases for session {session_id}: {triggered_phrases}")
 
     # Get or create conversation memory for this session
     memory = get_conversation_memory(session_id)
@@ -365,43 +437,23 @@ async def chat(request: Request):
         # Retrieve relevant knowledge from the vectorstore
         context = retriever.invoke(input_text)
         context_text = "\n\n".join([doc.page_content for doc in context])
-        logger.info(
-            f"Context retrieved for session {session_id}: {context_text}")
+        logger.info(f"Context retrieved for session {session_id}: {context_text}")
 
-        # Check if a PDF has been uploaded for this session
-        session_vectorstore_path = f"faiss_vectorstore_{session_id}"
-        if os.path.exists(session_vectorstore_path):
-            logger.info(
-                f"Loading vector store from uploaded PDF for session {session_id}."
-            )
-            # Load the session's vectorstore and retrieve the PDF content
-            vectorstore = FAISS.load_local(
-                session_vectorstore_path,
-                OpenAIEmbeddings(),
-                allow_dangerous_deserialization=True)
-            pdf_context = vectorstore.similarity_search(input_text)
-            pdf_text = "\n\n".join([doc.page_content for doc in pdf_context])
-
-            # Append the filename to the context text
-            filename = uploaded_files.get(session_id, "Unknown file")
-            context_text += f"\n\nAdditional context from uploaded PDF (File: {filename}):\n{pdf_text}"
-        else:
-            logger.info(f"No uploaded PDF found for session {session_id}.")
-
-        # Build the question with context and memory
-        question_with_context = f"{persona_prompt}\n\nContext:\n{context_text}\n\nQuestion: {input_text}"
+        # Build the question with context and memory, including the persona prompt and objective
+        question_with_context = f"{full_persona_prompt}\n\nObjective:\n{objective}\n\nContext:\n{context_text}\n\nQuestion: {input_text}"
 
         # Use the conversation chain for this session's memory
         conversation_chain = ConversationChain(llm=llm, memory=memory)
         result = conversation_chain.run(question_with_context)
         logger.info(f"Generated response for session {session_id}: {result}")
 
-        return {"answer": result}
+        return {
+            "answer": result,
+            "triggered_phrases": triggered_phrases
+        }
     except Exception as e:
-        logger.error(
-            f"Error during chat invocation for session {session_id}: {e}")
+        logger.error(f"Error during chat invocation for session {session_id}: {e}")
         return {"error": "Failed to process request"}
-
 
 @app.post("/upload-audio")
 async def upload_audio(session_id: str, file: UploadFile = File(...)):
@@ -418,14 +470,14 @@ async def upload_audio(session_id: str, file: UploadFile = File(...)):
         )
 
         # Convert speech to text using the whisper model
-        asr_pipe = pipeline(
-            "automatic-speech-recognition",
-            model=model,
-            feature_extractor=processor.feature_extractor,
-            tokenizer=processor.tokenizer,
-            chunk_length_s=30
-        )
-        transcription = asr_pipe(audio_path, generate_kwargs={"forced_decoder_ids": forced_decoder_ids})["text"]
+        asr_pipe = pipeline("automatic-speech-recognition",
+                            model=model,
+                            feature_extractor=processor.feature_extractor,
+                            tokenizer=processor.tokenizer,
+                            chunk_length_s=30)
+        transcription = asr_pipe(
+            audio_path,
+            generate_kwargs={"forced_decoder_ids": forced_decoder_ids})["text"]
         #transcription = speech_recognition_pipeline(audio_path)["text"]
         logger.info(f"Transcription for session {session_id}: {transcription}")
 
