@@ -33,6 +33,8 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
+client = OpenAI()
+
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 DOCUMENT_PATH = "docs/airzoon.pdf"
@@ -60,7 +62,7 @@ forced_decoder_ids = processor.get_decoder_prompt_ids(language="french",
 # speech_recognition_pipeline = pipeline("automatic-speech-recognition",
 #                                        model="openai/whisper-base")
 
-# Define persona prompts based on the PDF    
+# Define persona prompts based on the PDF
 personas = {
     "Marie":
     "Marie, Propriétaire de Restaurant. Traditionnelle, sceptique envers les nouvelles technologies, budget serré. Son objectif est d'attirer plus de clients locaux tout en maintenant un service client de qualité.",
@@ -73,18 +75,24 @@ personas = {
 }
 
 persona_objectives = {
-    "Marie": "Vente d'une solution marketing WIFI à un restaurant. L'objectif est de convaincre le propriétaire de souscrire à votre service de marketing WIFI pour attirer plus de clients et augmenter leur fidélité.",
-    "Paul": "Vente d'une solution marketing WIFI à un bar. L'objectif est de vendre la solution pour créer une ambiance connectée et recueillir des données sur les clients pour des campagnes marketing ciblées.",
-    "Sophie": "Vente d'une solution marketing WIFI à un salon d'esthétique. L'objectif est de proposer des services de marketing pour améliorer l'expérience client et promouvoir des offres spéciales via le WIFI.",
-    "Jean": "Vente d'une solution marketing WIFI à un salon de coiffure. L'objectif est de vendre le service pour fidéliser les clients existants et attirer de nouveaux clients grâce à des promotions et des publicités ciblées."
+    "Marie":
+    "Vente d'une solution marketing WIFI à un restaurant. L'objectif est de convaincre le propriétaire de souscrire à votre service de marketing WIFI pour attirer plus de clients et augmenter leur fidélité.",
+    "Paul":
+    "Vente d'une solution marketing WIFI à un bar. L'objectif est de vendre la solution pour créer une ambiance connectée et recueillir des données sur les clients pour des campagnes marketing ciblées.",
+    "Sophie":
+    "Vente d'une solution marketing WIFI à un salon d'esthétique. L'objectif est de proposer des services de marketing pour améliorer l'expérience client et promouvoir des offres spéciales via le WIFI.",
+    "Jean":
+    "Vente d'une solution marketing WIFI à un salon de coiffure. L'objectif est de vendre le service pour fidéliser les clients existants et attirer de nouveaux clients grâce à des promotions et des publicités ciblées."
 }
+
 
 def select_or_get_persona_and_objective(session_id):
     """Select a random persona and its objective if not already assigned to the session."""
     if session_id not in session_personas:
         persona_name = random.choice(list(personas.keys()))
         session_personas[session_id] = persona_name
-        logger.info(f"Assigned persona '{persona_name}' to session: {session_id}")
+        logger.info(
+            f"Assigned persona '{persona_name}' to session: {session_id}")
     else:
         persona_name = session_personas[session_id]
 
@@ -93,17 +101,19 @@ def select_or_get_persona_and_objective(session_id):
 
     return persona_name, persona_prompt, objective
 
+
 def check_session_progress(session_id):
     """Increase the exchange count for a session and return whether the test is completed."""
     if session_id not in session_exchange_counts:
         session_exchange_counts[session_id] = 0
     session_exchange_counts[session_id] += 1
 
-    # Check if the exchange count reaches 
+    # Check if the exchange count reaches
     if session_exchange_counts[session_id] >= 10:
         return True
     return False
-    
+
+
 UPLOAD_DIRECTORY = "temp_files"
 
 if not os.path.exists(UPLOAD_DIRECTORY):
@@ -111,6 +121,17 @@ if not os.path.exists(UPLOAD_DIRECTORY):
 
 
 def generate_voice_response(text: str) -> bytes:
+
+    speech_file_path = os.path.join(os.path.dirname(__file__), "speech.mp3")
+    response = client.audio.speech.create(
+        model="tts-1",
+        voice="nova",
+        input=text)
+
+    response.stream_to_file(speech_file_path)
+    with open(speech_file_path, 'rb') as audio_file:
+        return audio_file.read()
+
     # ElevenLabs Code (English)
     # elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
     # voice_id = os.getenv("ELEVENLABS_VOICE_ID")
@@ -137,25 +158,41 @@ def generate_voice_response(text: str) -> bytes:
     # return response.content
 
     # MeloTTS-French Code
-    speed = 1.2  # Speed is adjustable
-    device = 'cpu'  # or 'cuda:0' for GPU usage
+    # speed = 1.2  # Speed is adjustable
+    # device = 'cpu'  # or 'cuda:0' for GPU usage
 
-    model = TTS(language='FR', device=device)
-    speaker_ids = model.hps.data.spk2id
+    # model = TTS(language='FR', device=device)
+    # speaker_ids = model.hps.data.spk2id
 
-    output_path = 'fr.wav'  # Path to save the generated speech
+    # output_path = 'fr.wav'  # Path to save the generated speech
 
-    model.tts_to_file(text, speaker_ids['FR'], output_path, speed=speed)
+    # model.tts_to_file(text, speaker_ids['FR'], output_path, speed=speed)
 
-    with open(output_path, 'rb') as audio_file:
-        return audio_file.read()
+    # with open(output_path, 'rb') as audio_file:
+    #     return audio_file.read()
 
+def get_full_persona_prompt(session_id):
+    """Get or create the persona and objective prompt for a session."""
+    persona_name, persona_prompt, objective = select_or_get_persona_and_objective(session_id)
+    logger.info(f"Using persona '{persona_name}' for session {session_id} with objective: {objective}")
+
+    # Define the role-play instruction
+    role_play_instruction = (
+        f"You are {persona_name}, a potential client interested in Airzoon's services. "
+        f"Your goal is to learn more about how Airzoon can help you achieve your business objectives based on your situation: {objective}. "
+        "Throughout the conversation, ask a few relevant questions and share a bit of your needs as a client inquiring about the Airzoon services, evolving based on the user's responses. "
+        "Remember, you are role-playing as {persona_name} and must not reveal you are an AI."
+    )
+
+    full_persona_prompt = f"{role_play_instruction}\n\n{persona_prompt}"
+    return full_persona_prompt, objective
 
 banned_phrases = [
     "J’ai une petite question", "Pas de soucis", "Sincèrement", "Mais",
     "Par contre", "Dis toi que", "Dites-vous que", "Quasiment", "Sachez que",
     "airZoon c’est du WIFI"
 ]
+
 
 def check_banned_phrases(user_input, session_id):
     """Check if the user input contains any banned phrases and update the tracker for the session."""
@@ -174,16 +211,20 @@ def check_banned_phrases(user_input, session_id):
 
     return triggered_phrases
 
+
 def store_exchange_in_transcript(session_id, user_input, ai_response):
     """Store the user input and AI response in the session's transcript."""
     if session_id not in session_transcripts:
         session_transcripts[session_id] = []
-    session_transcripts[session_id].append(f"User: {user_input}\nAI: {ai_response}")
+    session_transcripts[session_id].append(
+        f"User: {user_input}\nAI: {ai_response}")
+
 
 def submit_transcript_to_analysis_llm(session_id):
     """Submit the transcript of the session to a separate LLM for analysis or summary."""
     transcript = "\n\n".join(session_transcripts[session_id])
-    logger.info(f"Submitting transcript for session {session_id} to analysis LLM.")
+    logger.info(
+        f"Submitting transcript for session {session_id} to analysis LLM.")
 
     # Initialize the OpenAI client
     client = OpenAI()
@@ -192,7 +233,6 @@ def submit_transcript_to_analysis_llm(session_id):
     analysis_prompt = (
         "Vous allez recevoir une transcription d'une session de jeu de rôle entre un stagiaire et un client simulé intéressé par les services d'Airzoon. "
         "Votre tâche est d'évaluer dans quelle mesure le stagiaire a suivi les meilleures pratiques de vente et de traitement des objections, en vous basant sur les critères suivants :\n\n"
-
         "1. **Traitement des objections lors de l’entretien commerciales** : Le stagiaire a-t-il géré efficacement les objections ? Évaluez spécifiquement s'il/elle a :\n"
         "- Accueilli les objections avec patience (par exemple, en reconnaissant l'objection sans interrompre).\n"
         "- Accusé réception de la préoccupation sans jugement (par exemple, 'Je comprends').\n"
@@ -201,32 +241,31 @@ def submit_transcript_to_analysis_llm(session_id):
         "- Pratiqué l'écoute active, reformulé l'objection, et clarifié avec des questions si nécessaire.\n"
         "- Offert des solutions ou des réponses à l'objection en mettant en avant des avantages et des preuves.\n"
         "- Récapitulé les avantages et validé la compréhension du client (par exemple, 'Cela répond à votre question ?').\n\n"
-
         "2. **Offres commerciales spéciales en cours** : Le stagiaire a-t-il utilisé efficacement les offres commerciales spéciales ? Évaluez spécifiquement s'il/elle a :\n"
         "- Proposé des offres spéciales de manière appropriée lorsque le client n’avait pas d’objection mais hésitait à s’engager.\n"
         "- Expliqué clairement les conditions des offres, telles que l’éligibilité, le timing, et les types de campagnes (par exemple, campagnes de communication par e-mail ou SMS).\n"
         "- Adapté l’offre aux besoins de l'entreprise du client et a apporté un sens d’urgence ou de valeur à l’offre.\n\n"
-
         "3. **Étapes clés de l’entretien de vente** : Le stagiaire a-t-il respecté les étapes clés de la conversation de vente ? Évaluez s'il/elle a :\n"
         "- Ouvert la conversation en établissant un lien et en définissant le cadre du rendez-vous (par exemple, en brisant la glace).\n"
         "- Posé des questions ouvertes pour découvrir les besoins du client et identifié au moins trois besoins principaux.\n"
         "- Répondu aux besoins identifiés avec des arguments et a traité efficacement les objections.\n"
         "- Présenté une démonstration ou un exemple, soit en direct, soit en se référant au succès d’un client existant.\n"
         "- Conclu l’entretien en confirmant les prochaines étapes, en obtenant un accord, ou en planifiant des actions de suivi.\n\n"
-
         "Après avoir analysé la transcription selon ces critères, veuillez fournir une évaluation détaillée. Mettez en avant les points forts et les axes d'amélioration, et donnez une appréciation globale de la performance du stagiaire dans cet exercice de jeu de rôle.\n\n"
-
-        "Transcription :\n\n" + transcript
-    )
+        "Transcription :\n\n" + transcript)
 
     # Make the API call to OpenAI to get the analysis
     completion = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "Vous êtes un assistant analysant des transcriptions de sessions de jeu de rôle pour la formation des ventes."},
-            {"role": "user", "content": analysis_prompt}
-        ]
-    )
+        messages=[{
+            "role":
+            "system",
+            "content":
+            "Vous êtes un assistant analysant des transcriptions de sessions de jeu de rôle pour la formation des ventes."
+        }, {
+            "role": "user",
+            "content": analysis_prompt
+        }])
 
     # Extract the response
     response = completion.choices[0].message
@@ -235,6 +274,7 @@ def submit_transcript_to_analysis_llm(session_id):
     logger.info(f"Analysis response for session {session_id}: {response}")
 
     return response
+
 
 # Function to calculate file hash
 def calculate_file_hash(filepath):
@@ -319,7 +359,7 @@ def cleanup_sessions(timeout=3600):  # Timeout in seconds (1 hour)
         session_transcripts.pop(session_id, None)
         banned_phrase_tracker.pop(session_id, None)
         session_exchange_counts.pop(session_id, None)
-        
+
         logger.info(
             f"Session {session_id} has been cleaned up due to inactivity.")
 
@@ -404,75 +444,6 @@ async def get_chat_page(request: Request):
     else:
         raise HTTPException(status_code=403, detail="Unauthorized")
 
-# Global dictionary to store filenames for each session
-uploaded_files = {}
-
-@app.post("/upload")
-async def upload_pdf(request: Request, file: UploadFile = File(...)):
-    session_token = request.cookies.get("session_token")
-    if not session_token:
-        raise HTTPException(status_code=403, detail="Unauthorized")
-
-    logger.info(f"Received file upload request: {file.filename}")
-
-    try:
-        # Save the file to the upload directory
-        file_location = f"{UPLOAD_DIRECTORY}/{file.filename}"
-        with open(file_location, "wb") as f:
-            f.write(await file.read())
-        logger.info(
-            f"File '{file.filename}' saved successfully at {file_location}.")
-
-        # Ingest the uploaded PDF into the vector store for this session
-        loader = UnstructuredPDFLoader(file_location)
-        docs = loader.load()
-        logger.info(f"Loaded {len(docs)} documents from the uploaded PDF.")
-
-        # Split the documents into chunks for embedding
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000,
-                                                       chunk_overlap=200)
-        chunks = text_splitter.split_documents(docs)
-        logger.info(f"Split the uploaded PDF into {len(chunks)} chunks.")
-
-        # Create embeddings and add them to the vector store for this session
-        embeddings = OpenAIEmbeddings()
-
-        # Check if this session already has a vectorstore
-        session_vectorstore_path = f"faiss_vectorstore_{session_token}"
-        if os.path.exists(session_vectorstore_path):
-            # Load the existing vectorstore for this session
-            vectorstore = FAISS.load_local(
-                session_vectorstore_path,
-                embeddings,
-                allow_dangerous_deserialization=True)
-            logger.info(
-                f"Loaded existing vectorstore for session {session_token}.")
-        else:
-            # Create a new vectorstore if it doesn't exist for this session
-            vectorstore = FAISS.from_documents(documents=chunks,
-                                               embedding=embeddings)
-            logger.info(
-                f"Created new vectorstore for session {session_token}.")
-
-        # Update the vectorstore with the new document chunks
-        vectorstore.add_documents(chunks)
-        vectorstore.save_local(session_vectorstore_path)
-        logger.info(
-            f"Updated vectorstore for session {session_token} with the new document."
-        )
-
-        # Store the uploaded filename for this session
-        uploaded_files[session_token] = file.filename
-
-        return {
-            "message":
-            f"File '{file.filename}' uploaded and ingested successfully!"
-        }
-
-    except Exception as e:
-        logger.error(f"Error during file upload and ingestion: {e}")
-        return {"error": str(e)}
-
 # Chat functionality restricted by session
 @app.post("/chat")
 async def chat(request: Request):
@@ -495,19 +466,8 @@ async def chat(request: Request):
         analysis_response = submit_transcript_to_analysis_llm(session_id)
         return {"answer": "Test completed, thank you for your participation!"}
 
-    # Get or select the persona and objective for this session
-    persona_name, persona_prompt, objective = select_or_get_persona_and_objective(session_id)
-    logger.info(f"Using persona '{persona_name}' for session {session_id} with objective: {objective}")
-
-    # Ensure that the persona prompt emphasizes role-playing and includes the objective
-    role_play_instruction = (
-        f"You are {persona_name}, a potential client interested in Airzoon's services. "
-        f"Your goal is to learn more about how Airzoon can help you achieve your business objectives based on your situation: {objective}. "
-        "Throughout the conversation, ask relevant questions and share your needs as a client inquiring about the Airzoon services, evolving based on the user's responses."
-        " Remember, you are role-playing as {persona_name} and must not reveal you are an AI. "
-    )
-
-    full_persona_prompt = f"{role_play_instruction}\n\n{persona_prompt}"
+    # Get or create the full persona prompt and objective for this session
+    full_persona_prompt, objective = get_full_persona_prompt(session_id)
 
     # Check for banned phrases in user input
     triggered_phrases = check_banned_phrases(input_text, session_id)
@@ -530,31 +490,25 @@ async def chat(request: Request):
         conversation_chain = ConversationChain(llm=llm, memory=memory)
         result = conversation_chain.run(question_with_context)
         logger.info(f"Generated response for session {session_id}: {result}")
-        
+
         # Store exchange in session transcript
         store_exchange_in_transcript(session_id, input_text, result)
-        
-        return {
-            "answer": result,
-            "triggered_phrases": triggered_phrases
-        }
+
+        return {"answer": result, "triggered_phrases": triggered_phrases}
     except Exception as e:
         logger.error(f"Error during chat invocation for session {session_id}: {e}")
         return {"error": "Failed to process request"}
-
+        
 @app.post("/upload-audio")
 async def upload_audio(session_id: str, file: UploadFile = File(...)):
     try:
-        logger.info(
-            f"Received audio file for session {session_id}: {file.filename}")
+        logger.info(f"Received audio file for session {session_id}: {file.filename}")
 
         # Save the audio file temporarily
         audio_path = f"{UPLOAD_DIRECTORY}/{file.filename}"
         with open(audio_path, "wb") as f:
             f.write(await file.read())
-        logger.info(
-            f"Audio file '{file.filename}' saved successfully at {audio_path}."
-        )
+        logger.info(f"Audio file '{file.filename}' saved successfully at {audio_path}.")
 
         # Convert speech to text using the whisper model
         asr_pipe = pipeline("automatic-speech-recognition",
@@ -565,18 +519,32 @@ async def upload_audio(session_id: str, file: UploadFile = File(...)):
         transcription = asr_pipe(
             audio_path,
             generate_kwargs={"forced_decoder_ids": forced_decoder_ids})["text"]
-        #transcription = speech_recognition_pipeline(audio_path)["text"]
         logger.info(f"Transcription for session {session_id}: {transcription}")
+
+        # Check for banned phrases in transcription
+        triggered_phrases = check_banned_phrases(transcription, session_id)
+        if triggered_phrases:
+            logger.info(f"Triggered banned phrases for session {session_id}: {triggered_phrases}")
+
+        # Check the progress of the session and if the test is complete
+        if check_session_progress(session_id):
+            analysis_response = submit_transcript_to_analysis_llm(session_id)
+            return {"answer": "Test completed, thank you for your participation!"}
+
+        # Get or create the full persona prompt and objective for this session
+        full_persona_prompt, objective = get_full_persona_prompt(session_id)
 
         # Generate a response based on the transcription
         memory = get_conversation_memory(session_id)
         context = retriever.invoke(transcription)
         context_text = "\n\n".join([doc.page_content for doc in context])
-        question_with_context = f"{persona_prompt}\n\nContext:\n{context_text}\n\nQuestion: {transcription}"
+        question_with_context = f"{full_persona_prompt}\n\nObjective:\n{objective}\n\nContext:\n{context_text}\n\nQuestion: {transcription}"
         conversation_chain = ConversationChain(llm=llm, memory=memory)
         result = conversation_chain.run(question_with_context)
-        logger.info(
-            f"Generated text response for session {session_id}: {result}")
+        logger.info(f"Generated text response for session {session_id}: {result}")
+
+        # Store exchange in session transcript
+        store_exchange_in_transcript(session_id, transcription, result)
 
         # Generate voice response from ElevenLabs
         voice_response = generate_voice_response(result)
@@ -592,13 +560,12 @@ async def upload_audio(session_id: str, file: UploadFile = File(...)):
         return {
             "answer": result,
             "audio_path": f"/temp_files/response_{session_id}.mp3",
-            "transcription": transcription
+            "transcription": transcription,
+            "triggered_phrases": triggered_phrases
         }
 
     except Exception as e:
-        logger.error(
-            f"Error during audio upload and processing for session {session_id}: {e}"
-        )
+        logger.error(f"Error during audio upload and processing for session {session_id}: {e}")
         return {"error": str(e)}
 
 
