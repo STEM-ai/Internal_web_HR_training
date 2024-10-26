@@ -725,7 +725,7 @@ async def upload_audio(session_id: str, file: UploadFile = File(...)):
         # Return the path of the generated audio, text response, and transcription
         return {
             "answer": result,
-            "audio_path": f"/temp_files/response_{session_id}.mp3",
+            "audio_path": f"{UPLOAD_DIRECTORY}/response_{session_id}.mp3",
             "transcription": transcription,
             "triggered_phrases": triggered_phrases
         }

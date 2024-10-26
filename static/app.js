@@ -44,33 +44,26 @@ let mediaRecorder;
 let audioChunks = [];
 
 document.getElementById('start-recording').addEventListener('click', async () => {
-    console.log("Start recording button clicked");
-
+    document.getElementById('recording-indicator').style.display = 'block'; // Show recording indicator
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         console.error("navigator.mediaDevices.getUserMedia not supported on this browser");
         alert("Your browser does not support audio recording. Please use a different browser.");
     }
 
     try {
-        // Request microphone access
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        console.log("Microphone access granted");
-
         mediaRecorder = new MediaRecorder(stream);
-        console.log("MediaRecorder initialized");
 
         mediaRecorder.ondataavailable = (event) => {
-            console.log("Audio chunk available", event.data);
             audioChunks.push(event.data);
         };
 
         mediaRecorder.onstop = async () => {
-            console.log("Recording stopped");
+            document.getElementById('recording-indicator').style.display = 'none'; // Hide recording indicator
             const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
             const audioUrl = URL.createObjectURL(audioBlob);
             document.getElementById('audio-preview').src = audioUrl;
 
-            // Create FormData to send the audio file to the backend
             const formData = new FormData();
             formData.append('file', audioBlob, 'recording.webm');
 
@@ -86,18 +79,15 @@ document.getElementById('start-recording').addEventListener('click', async () =>
             } catch (error) {
                 console.error("Error uploading audio:", error);
             }
-
-            // Reset the chunks for the next recording
             audioChunks = [];
         };
 
         mediaRecorder.start();
-        console.log("Recording started");
         document.getElementById('start-recording').disabled = true;
         document.getElementById('stop-recording').disabled = false;
     } catch (err) {
-        console.error("Error accessing microphone or setting up MediaRecorder:", err);
-        alert("Error accessing the microphone. Please check your browser settings.");
+        console.error("Error accessing microphone:", err);
+        alert("Error accessing the microphone.");
     }
 });
 
@@ -106,6 +96,9 @@ document.getElementById('stop-recording').addEventListener('click', async () => 
 
     if (mediaRecorder) {
         mediaRecorder.stop();
+
+        // Hide the recording indicator immediately after stopping
+        document.getElementById('recording-indicator').style.display = 'none';
 
         document.getElementById('start-recording').disabled = false;
         document.getElementById('stop-recording').disabled = true;
@@ -126,14 +119,14 @@ document.getElementById('stop-recording').addEventListener('click', async () => 
                 const result = await response.json();
                 console.log("Audio processing result:", result);
 
-                // Display the transcribed message as a user message
+                // Display transcription as a user message
                 const chatBox = document.getElementById('chat-box');
                 const userMessage = document.createElement('div');
                 userMessage.classList.add('user-message');
                 userMessage.innerText = result.transcription;  // Display the transcription
                 chatBox.appendChild(userMessage);
 
-                // Display the AI response as a bot message
+                // Display AI response as a bot message
                 const botMessage = document.createElement('div');
                 botMessage.classList.add('ai-message');
                 botMessage.innerText = result.answer;
@@ -143,9 +136,14 @@ document.getElementById('stop-recording').addEventListener('click', async () => 
                 if (result.audio_path) {
                     const audio = new Audio(result.audio_path);
                     audio.play();
+                    audio.addEventListener("play", () => {
+                        document.getElementById('playback-indicator').style.display = 'block'; // Show playback indicator
+                    });
+                    audio.addEventListener("ended", () => {
+                        document.getElementById('playback-indicator').style.display = 'none'; // Hide playback indicator
+                    });
                 }
 
-                // Scroll to the bottom of the chat box
                 chatBox.scrollTop = chatBox.scrollHeight;
 
             } catch (error) {
@@ -156,4 +154,12 @@ document.getElementById('stop-recording').addEventListener('click', async () => 
             audioChunks = [];
         };
     }
+});
+
+document.getElementById('audio-preview').addEventListener('play', () => {
+    document.getElementById('playback-indicator').style.display = 'block'; // Show playback indicator
+});
+
+document.getElementById('audio-preview').addEventListener('ended', () => {
+    document.getElementById('playback-indicator').style.display = 'none'; // Hide playback indicator
 });

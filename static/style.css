@@ -186,3 +186,52 @@ button:hover {
   margin-top: 15px;
   width: 100%;
 }
+
+.indicator-wrapper {
+  text-align: center; /* Center contents of wrapper */
+  margin-top: 10px;
+}
+
+/* Indicator styling with compact width */
+.indicator {
+    display: inline-flex; /* Ensures the element wraps only around its content */
+    align-items: center; /* Center icon and text vertically */
+    justify-content: center; /* Center content within */
+    gap: 6px; /* Space between icon and text */
+    padding: 5px 12px; /* Add some padding around the text */
+    font-size: 0.9em;
+    font-weight: bold;
+    color: #ffffff;
+    background-color: #ff4d4f;
+    border-radius: 20px;
+    box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.15);
+    width: fit-content; /* Ensure it only takes the width of the content */
+    max-width: fit-content; /* Prevent any unintended stretching */
+    margin: 0 auto; /* Center the indicator within the wrapper */
+    white-space: nowrap; /* Prevents the text from wrapping, keeping it compact */
+}
+
+#recording-indicator {
+    background-color: #ff4d4f; /* Red for recording */
+}
+
+#playback-indicator {
+    background-color: #4a90e2; /* Blue for playback */
+}
+
+.indicator-icon {
+    font-size: 1.2em; /* Icon size to match text */
+    animation: pulse 1.5s infinite; /* Adds a pulsing effect */
+}
+
+/* Pulser animation for icon */
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.1);
+        opacity: 0.8;
+    }
+}
